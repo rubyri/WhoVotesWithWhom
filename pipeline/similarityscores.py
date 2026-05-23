@@ -191,3 +191,13 @@ with open(json_path, "w") as f:
 print(f"  Exported: {json_path}")
 print(f"  Matrix size: {n} × {n} countries")
 print(f"  NaN entries (pairs below threshold): {np.isnan(matrix).sum() - 0:,}")
+
+# Export resolution counts per year
+res_counts = (
+    un_voted.groupby("year")["resolution"]
+    .nunique()
+    .reset_index()
+    .rename(columns={"resolution": "n_resolutions"})
+)
+res_counts.to_csv("data/processed/resolution_counts.csv", index=False)
+print("  Exported: resolution_counts.csv")

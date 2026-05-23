@@ -129,8 +129,6 @@
 
 </div>
 
-<div id="tooltip"></div>
-
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
 //  Configuration
@@ -141,6 +139,7 @@ const DATA_PATHS = {
   agreement:   "../data/processed/agreement_overall.csv",
   idealpoints: "../data/processed/un_with_idealpoints.csv",
   country_idx: "../data/processed/country_index.csv",
+  resolutions: "../data/processed/resolution_counts.csv",
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,16 +208,20 @@ async function loadData() {
   }
 
   // Load CSV data files
-  let agreementRaw, idealpointsRaw, countryRaw;
+  let agreementRaw, idealpointsRaw, countryRaw, resolutionRaw;
   try {
-    [agreementRaw, idealpointsRaw, countryRaw] = await Promise.all([
-      d3.csv(DATA_PATHS.agreement),
-      d3.csv(DATA_PATHS.idealpoints),
-      d3.csv(DATA_PATHS.country_idx),
+    [agreementRaw, idealpointsRaw, countryRaw, resolutionRaw] = await Promise.all([
+     d3.csv(DATA_PATHS.agreement),
+     d3.csv(DATA_PATHS.idealpoints),
+     d3.csv(DATA_PATHS.country_idx),
+     d3.csv(DATA_PATHS.resolutions),
     ]);
   } catch(e) {
     console.warn("CSV data files not found — using demo data");
     agreementRaw = null;
+    idealpointsRaw = null;
+    countryRaw = null;
+    resolutionRaw = null;
   }
 
   // Build agreement lookup: year -> iso -> consensus score
@@ -280,12 +283,31 @@ async function loadData() {
     }
   }
 
+  const resMap = new Map();
+  if (resolutionRaw) {
+    for (const r of resolutionRaw) {
+      resMap.set(+r.year, +r.n_resolutions);
+    }
+  }
+
   state.data.agreement   = agreementMap;
   state.data.pairMap     = pairMap;
   state.data.idealpoints = ipMap;
   state.data.countries   = countryMap;
+  state.data.resolutions = resMap;
 
   return world;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Stats
+// ─────────────────────────────────────────────────────────────────────────────
+
+function updateStats() {
+  const yearData = state.data.agreement?.get(state.year);
+  const resData  = state.data.resolutions?.get(state.year);
+  d3.select("#stat-countries").text(yearData ? yearData.size : "—");
+  d3.select("#stat-resolutions").text(resData ?? "—");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -388,6 +410,7 @@ function initMap(world) {
     state.year = +this.value;
     d3.select("#year-label").text(state.year);
     updateColors(paths, numToIso);
+    updateStats();  // add this
   });
 
   d3.select("#metric-select").on("change", function() {
@@ -532,11 +555,8 @@ function buildNumericToIsoMap() {
   }
 
   // Update resolution count stat
-  const yearData = state.data.agreement?.get(state.year);
-  if (yearData) {
-    d3.select("#stat-countries").text(yearData.size);
-  }
-})();
+  updateStats();
+  })();
 </script>
 </body>
 </html>
