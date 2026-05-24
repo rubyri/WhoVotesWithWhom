@@ -43,33 +43,22 @@ MIN_SHARED_VOTES = 5
 
 CLEAN_ONLY = "--clean-only" in sys.argv
 
-def section(title):
-    print("\n" + "=" * 70)
-    print(f"  {title}")
-    print("=" * 70)
-
-def subsection(title):
-    print(f"\n── {title} " + "─" * (60 - len(title)))
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 #  PART 1 — CLEANING
 # ─────────────────────────────────────────────────────────────────────────────
 
-section("1. LOADING RAW DATA")
+print("1. LOADING RAW DATA")
 
-print("  Loading UN votes...")
 un = pd.read_csv(UN_VOTES_PATH, low_memory=False)
 print(f"  UN votes loaded      : {len(un):,} rows")
 
-print("  Loading ideal points...")
 ip = pd.read_csv(IDEAL_POINTS_PATH, low_memory=False)
 print(f"  Ideal points loaded  : {len(ip):,} rows")
 
 
 # ── 2. Clean UN votes ─────────────────────────────────────────────────────────
 
-section("2. CLEANING UN VOTES")
+print("2. CLEANING UN VOTES")
 
 # Parse dates
 un["date"] = pd.to_datetime(un["date"], errors="coerce")
@@ -78,10 +67,10 @@ un["year"] = un["date"].dt.year
 # Standardise vote column
 un["ms_vote"] = un["ms_vote"].str.strip().str.upper()
 
-subsection("Vote distribution")
+print("Vote distribution")
 print(un["ms_vote"].value_counts(dropna=False).to_string())
 
-# Drop columns not needed for analysis (undl_link kept intentionally)
+# Drop columns not needed for analysis
 drop_cols = ["draft", "committee_report", "vote_note", "meeting"]
 un = un.drop(columns=[c for c in drop_cols if c in un.columns])
 
@@ -103,7 +92,7 @@ print(f"  Rows excluded (absent/X)     : {un['vote_num'].isna().sum():,}")
 
 # ── 3. Subject classification ─────────────────────────────────────────────────
 
-section("3. SUBJECT CLASSIFICATION")
+print("3. SUBJECT CLASSIFICATION")
 
 def map_subject(subject_str):
     """
@@ -128,7 +117,7 @@ result = un["subjects"].apply(map_subject)
 un["subject_category"]    = result.apply(lambda x: x[0])
 un["subject_subcategory"] = result.apply(lambda x: x[1])
 
-subsection("Category distribution")
+print("Category distribution")
 cat_counts = un["subject_category"].value_counts()
 cat_pcts   = (cat_counts / len(un) * 100).round(1)
 print(pd.DataFrame({"count": cat_counts, "pct%": cat_pcts}).to_string())
@@ -136,7 +125,7 @@ print(pd.DataFrame({"count": cat_counts, "pct%": cat_pcts}).to_string())
 
 # ── 4. Country code remaps ────────────────────────────────────────────────────
 
-section("4. COUNTRY CODE REMAPS")
+print("4. COUNTRY CODE REMAPS")
 
 # West Germany (GER) → DEU in ideal points file
 remap = {"GER": "DEU"}
@@ -146,7 +135,7 @@ print(f"  Remapped GER → DEU for join ({(un['ms_code']=='GER').sum()} rows)")
 
 # ── 5. Join with ideal points ─────────────────────────────────────────────────
 
-section("5. JOINING WITH IDEAL POINTS")
+print("5. JOINING WITH IDEAL POINTS")
 
 ip_join = (
     ip[["iso3c", "year", "IdealPointFP", "NVotesFP", "Q5%FP", "Q95%FP"]]
@@ -162,7 +151,7 @@ print(f"  Unmatched : {unmatched:,} ({unmatched/len(un_joined)*100:.1f}%)")
 
 # ── 6. Build lookup tables ────────────────────────────────────────────────────
 
-section("6. BUILDING LOOKUP TABLES")
+print("6. BUILDING LOOKUP TABLES")
 
 # Country index
 country_index = (
@@ -240,7 +229,7 @@ else:
 
     # ── 7. Core agreement function ────────────────────────────────────────────
 
-    section("7. COMPUTING PAIRWISE AGREEMENT")
+    print("7. COMPUTING PAIRWISE AGREEMENT")
 
     def compute_agreement(df, group_cols, min_shared=5):
         records = []
@@ -296,23 +285,23 @@ else:
         return pd.DataFrame(records)
 
     # Overall
-    subsection("Overall agreement")
+    print("Overall agreement")
     overall      = compute_agreement(un_voted_all, ["year"], min_shared=5)
     print(f"  Pairs computed : {len(overall):,}")
     print(f"  Year range     : {overall['year'].min()} – {overall['year'].max()}")
 
-    subsection("Agreement distribution")
+    print("Agreement distribution")
     print(overall["agreement"].describe(percentiles=[.1, .25, .5, .75, .9]).round(3).to_string())
 
-    subsection("Most similar pairs in latest year")
+    print("Most similar pairs in latest year")
     latest = overall[overall["year"] == overall["year"].max()]
     print(latest.nlargest(10, "agreement")[["ms_code1", "ms_code2", "n_shared", "agreement"]].to_string(index=False))
 
-    subsection("Most dissimilar pairs in latest year")
+    print("Most dissimilar pairs in latest year")
     print(latest.nsmallest(10, "agreement")[["ms_code1", "ms_code2", "n_shared", "agreement"]].to_string(index=False))
 
     # Per category
-    subsection("Per-category agreement")
+    print("Per-category agreement")
     un_cat = un_voted_all[~un_voted_all["subject_category"].isin(["Uncategorized", "Other"])]
     print(f"  Rows used : {len(un_cat):,}")
 
@@ -323,7 +312,7 @@ else:
     by_category["category_id"] = by_category["subject_category"].map(cat_to_id)
     by_category = by_category.drop(columns=["subject_category"])
 
-    subsection("Median agreement by category")
+    print("Median agreement by category")
     print(
         by_category_raw.groupby("subject_category")["agreement"]
         .median()
@@ -337,7 +326,7 @@ else:
 #  PART 3 — EXPORT TO SQLITE
 # ─────────────────────────────────────────────────────────────────────────────
 
-section("8. EXPORTING TO SQLITE")
+print("8. EXPORTING TO SQLITE")
 
 os.makedirs("data/processed", exist_ok=True)
 if os.path.exists(DB_PATH):
@@ -463,7 +452,7 @@ conn.commit()
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 
-subsection("Table row counts")
+print("Table row counts")
 tables = ["countries", "categories", "ideal_points", "resolution_counts"]
 if not CLEAN_ONLY:
     tables += [
@@ -480,7 +469,6 @@ size_mb = os.path.getsize(DB_PATH) / 1024 / 1024
 print(f"\n  Exported: {DB_PATH} ({size_mb:.1f} MB)")
 if CLEAN_ONLY:
     print("  Note: agreement tables omitted (--clean-only mode)")
-print("\n  Done.")
 
 
 

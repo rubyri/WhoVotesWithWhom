@@ -14,7 +14,7 @@
 </head>
 <body>
 
-<!-- SVG defs for hatch pattern — must be outside the map SVG -->
+<!-- SVG defs for hatch pattern -->
 <svg width="0" height="0" style="position:absolute;overflow:hidden">
   <defs>
     <pattern id="hatch" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
@@ -44,6 +44,7 @@
   <!-- Sidebar -->
   <aside class="sidebar">
 
+    <!-- Controls -->
     <div class="control-group">
       <label>Color by</label>
       <select id="metric-select">
@@ -53,11 +54,13 @@
       </select>
     </div>
 
+    <!-- Year Slider -->
     <div class="control-group">
       <label>Year — <span id="year-label">2024</span></label>
       <input type="range" id="year-slider" min="1946" max="2024" value="2024" step="1">
     </div>
 
+    <!-- Topic Filter -->
     <div class="control-group">
       <label>Filter by topic</label>
       <select id="topic-select">
@@ -89,6 +92,7 @@
 
     <div class="divider"></div>
 
+    <!-- Stats -->
     <div class="stats-row">
       <div class="stat-pill">
         <div class="stat-val" id="stat-countries">—</div>
@@ -264,7 +268,8 @@ async function loadData() {
   DB = new SQL.Database(buffer);
 
   // ── Load static lookup tables into memory ─────────────────────────────────
-
+  // Countries, ideal points, and resolution counts are small and static — loading them once into Maps
+  // avoids repeated DB queries during user interactions like hovering and slider movement.
   loadingText.textContent = "Loading country data";
 
   // Countries
@@ -299,6 +304,10 @@ async function loadData() {
 //  On-demand data loaders (cached after first load)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Loads per-country consensus scores for a given year from mat_consensus_overall.
+ * Results are cached in state.data.agreement - subsequent calls for the same year are no-ops.
+ */
 function loadYearConsensus(year) {
   if (state.data.agreement.has(year)) return;
   const m = new Map();
@@ -310,6 +319,10 @@ function loadYearConsensus(year) {
   state.data.agreement.set(year, m);
 }
 
+/**
+ * Loads per-country consensus scores for a given year and topic from mat_consensus_by_category.
+ * Results are cached in state.data.categories. Also updates the topic notice with data quality info.
+ */
 function loadTopicConsensus(year, topic) {
   if (!state.data.categories.has(topic)) state.data.categories.set(topic, new Map());
   if (state.data.categories.get(topic).has(year)) return;
@@ -340,6 +353,11 @@ function loadTopicConsensus(year, topic) {
   notice.style.display = "block";
 }
 
+/**
+ * Loads pairwise agreement scores between a selected country and all others for a given year.
+ * Queries agreement_overall directly (not the materialized view) since this is pair-level data.
+ * Results are cached in state.data.similarity under the key "year__ms_code".
+ */
 function loadSimilarity(year, selectedCode) {
   const key = `${year}__${selectedCode}`;
   if (state.data.similarity.has(key)) return;
@@ -363,8 +381,13 @@ function isDataSparse(year, topic) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Stats
+//  Updaters
 // ─────────────────────────────────────────────────────────────────────────────
+ /**
+ * Updates the Countries and Resolutions counters in the sidebar.
+ * When a topic is selected, shows counts for that topic in the current year.
+ * When showing all topics, shows overall counts for the current year.
+ */
 
 function updateStats() {
   if (state.topic !== "all") {
@@ -379,10 +402,11 @@ function updateStats() {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Color update
-// ─────────────────────────────────────────────────────────────────────────────
-
+/**
+ * Recolors all country paths based on the current metric, year, and topic.
+ * Three modes: consensus (average agreement), idealpoint (W↔E axis), similarity (vs selected country).
+ * Countries with no data for the current selection are shown in a neutral dark color.
+ */
 function updateColors(paths, numToIso) {
   const yearConsensus = state.data.agreement.get(state.year);
   const ipYear        = state.data.idealpoints.get(state.year);
@@ -416,6 +440,11 @@ function updateColors(paths, numToIso) {
   });
 }
 
+/**
+ * Applies a diagonal hatch overlay to countries when the selected topic has sparse data (< 5 resolutions).
+ * Only hatches countries that have a color — countries with no data at all stay plain.
+ * Has no effect when showing all topics or when data is sufficient.
+ */
 function updateHatch(hatchPaths, numToIso) {
   const sparse = isDataSparse(state.year, state.topic);
   hatchPaths.attr("fill", d => {
@@ -426,11 +455,11 @@ function updateHatch(hatchPaths, numToIso) {
     return hasData ? "url(#hatch)" : "none";
   });
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Info card
-// ─────────────────────────────────────────────────────────────────────────────
-
+/**
+ * Updates the country detail card in the sidebar when a country is hovered.
+ * Shows country name, ISO code, average agreement score, ideal point, and UN membership start year.
+ * Resets to placeholder text when no country is hovered.
+ */
 function updateInfoCard(iso, info, agr, ip) {
   const card = d3.select("#info-card");
   if (!iso || !info) {
@@ -469,7 +498,6 @@ function initMap(world) {
   const width  = svg.node().clientWidth;
   const height = svg.node().clientHeight;
 
-  // Declare here so event handlers can close over them
   let paths, hatchPaths;
 
   const projection = d3.geoNaturalEarth1()
@@ -510,7 +538,7 @@ function initMap(world) {
     .attr("d", path)
     .attr("data-id", d => d.id);
 
-  // ── Hatch overlay layer — drawn on top, pointer-events disabled ───────────
+  // ── Hatch overlay layer - drawn on top, pointer-events disabled ───────────
   hatchPaths = g.selectAll(".country-hatch")
     .data(countries)
     .join("path")
@@ -531,12 +559,13 @@ function initMap(world) {
       const iso  = numToIso.get(+d.id);
       const info = iso ? state.data.countries.get(iso) : null;
 
+      /* Looks up the agreement value to display */
       let agr = null;
-      if (state.metric === "consensus") {
+      if (state.metric === "consensus") { // similarity to majority consensus
         agr = state.topic !== "all"
           ? state.data.categories.get(state.topic)?.get(state.year)?.get(iso) ?? null
           : state.data.agreement.get(state.year)?.get(iso) ?? null;
-      } else if (state.metric === "similarity" && state.selectedCode) {
+      } else if (state.metric === "similarity" && state.selectedCode) { // similarity to selected country 
         agr = state.data.similarity.get(`${state.year}__${state.selectedCode}`)?.get(iso) ?? null;
       }
 
@@ -555,13 +584,13 @@ function initMap(world) {
 
       updateInfoCard(iso, info, agr, ip);
     })
-    .on("mouseleave", () => tooltip.classed("visible", false))
+    .on("mouseleave", () => tooltip.classed("visible", false))  // hide tooltip on mouse leave
     .on("click", function(event, d) {
       const iso = numToIso.get(+d.id);
-      if (!iso) return;
+      if (!iso) return; // leave early if no country (eg Antarctica)
       state.selectedCode = iso;
-      paths.classed("selected", dd => numToIso.get(+dd.id) === iso);
-      if (state.metric === "similarity") {
+      paths.classed("selected", dd => numToIso.get(+dd.id) === iso);  // highlight selected country (load .selected class in CSS)
+      if (state.metric === "similarity") {  // if in similarity mode, clicking a country sets it as the new reference for coloring
         loadSimilarity(state.year, iso);
         updateColors(paths, numToIso);
         updateHatch(hatchPaths, numToIso);
