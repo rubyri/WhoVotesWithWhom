@@ -1,9 +1,10 @@
 """
 UN General Assembly Voting Data — Full Pipeline
 ================================================
-Combines cleaning, joining, subject classification, and pairwise
-agreement computation into a single script. Outputs votes.db only —
-no intermediate CSV files.
+Cleaning, joining, subject classification, and pairwise
+agreement computation. 
+
+Output: votes.db 
 
 Usage:
   python pipeline/pipeline.py              # full run
@@ -215,6 +216,17 @@ categories_df = pd.DataFrame({
 cat_to_id = dict(zip(categories_df["category_name"], categories_df["category_id"]))
 print(f"  Categories : {len(categories_df)}")
 
+# Resolution counts per year per category
+res_counts_by_category = (
+    un_voted_all[~un_voted_all["subject_category"].isin(["Uncategorized", "Other"])]
+    .groupby(["year", "subject_category"])["resolution"]
+    .nunique()
+    .reset_index()
+    .rename(columns={"resolution": "n_resolutions"})
+)
+res_counts_by_category["category_id"] = res_counts_by_category["subject_category"].map(cat_to_id)
+res_counts_by_category = res_counts_by_category.drop(columns=["subject_category"])
+print(f"  Resolution counts by category rows : {len(res_counts_by_category)}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  PART 2 — AGREEMENT COMPUTATION (skipped with --clean-only)
@@ -230,7 +242,7 @@ else:
 
     section("7. COMPUTING PAIRWISE AGREEMENT")
 
-    def compute_agreement(df, group_cols):
+    def compute_agreement(df, group_cols, min_shared=5):
         records = []
         groups = df.groupby(group_cols)
         total_groups = len(groups)
@@ -260,7 +272,7 @@ else:
                 both_voted = ~(np.isnan(v1) | np.isnan(v2))
                 n_shared   = both_voted.sum()
 
-                if n_shared < MIN_SHARED_VOTES:
+                if n_shared < min_shared:
                     continue
 
                 n_agree   = (v1[both_voted] == v2[both_voted]).sum()
@@ -285,7 +297,7 @@ else:
 
     # Overall
     subsection("Overall agreement")
-    overall = compute_agreement(un_voted_all, ["year"])
+    overall      = compute_agreement(un_voted_all, ["year"], min_shared=5)
     print(f"  Pairs computed : {len(overall):,}")
     print(f"  Year range     : {overall['year'].min()} – {overall['year'].max()}")
 
@@ -304,7 +316,7 @@ else:
     un_cat = un_voted_all[~un_voted_all["subject_category"].isin(["Uncategorized", "Other"])]
     print(f"  Rows used : {len(un_cat):,}")
 
-    by_category_raw = compute_agreement(un_cat, ["year", "subject_category"])
+    by_category_raw = compute_agreement(un_cat, ["year", "subject_category"], min_shared=2)
 
     # Replace category string with integer foreign key
     by_category = by_category_raw.copy()
@@ -347,6 +359,12 @@ ideal_points_lean.to_sql("ideal_points", conn, if_exists="replace", index=False)
 
 print("  Writing resolution_counts...")
 res_counts.to_sql("resolution_counts", conn, if_exists="replace", index=False)
+
+print("  Writing resolution_counts_by_category...")
+res_counts_by_category[["year", "category_id", "n_resolutions"]].to_sql(
+    "resolution_counts_by_category", conn, if_exists="replace", index=False)
+conn.execute("CREATE INDEX idx_rcbc_year ON resolution_counts_by_category(year)")
+conn.execute("CREATE INDEX idx_rcbc_cat  ON resolution_counts_by_category(category_id)")
 
 # ── Fact tables (only if full run) ────────────────────────────────────────────
 
@@ -413,6 +431,13 @@ if not CLEAN_ONLY:
     GROUP BY a.year, c.category_name, a.ms_code
     """)
 
+    conn.execute("""
+    CREATE VIEW resolution_counts_named AS
+    SELECT r.year, c.category_name, r.n_resolutions
+    FROM resolution_counts_by_category r
+    JOIN categories c ON r.category_id = c.category_id
+    """)
+
 # ── Materialized tables (only if full run) ────────────────────────────────────
 
 if not CLEAN_ONLY:
@@ -456,3 +481,6 @@ print(f"\n  Exported: {DB_PATH} ({size_mb:.1f} MB)")
 if CLEAN_ONLY:
     print("  Note: agreement tables omitted (--clean-only mode)")
 print("\n  Done.")
+
+
+
