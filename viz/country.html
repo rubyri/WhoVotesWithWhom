@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Country Detail — Who Votes With Whom</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="map.css">
+<link rel="stylesheet" href="country.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+</head>
+<body>
+
+<!-- DNA tooltip -->
+<div class="dna-tooltip" id="dna-tooltip"></div>
+
+<!-- Header -->
+<header>
+  <div class="header-left">
+    <h1>Who Votes With Whom</h1>
+    <span class="header-sub">UN General Assembly · 1946–2025</span>
+  </div>
+  <div class="header-right">
+    <nav class="nav-tabs">
+      <button class="nav-tab" onclick="window.location.href='map.html'">World Map</button>
+      <button class="nav-tab">Network</button>
+      <button class="nav-tab">Timeline</button>
+      <button class="nav-tab">Compare</button>
+      <button class="nav-tab active" id="country-tab">—</button>
+    </nav>
+  </div>
+</header>
+
+<!-- Loading -->
+<div class="page-loading" id="page-loading">
+  <div class="loading-text" id="loading-text">Loading database</div>
+  <div class="loading-bar"><div class="loading-fill"></div></div>
+  <div id="loading-progress" style="font-size:10px;color:#3d5478;margin-top:8px;letter-spacing:0.08em;"></div>
+</div>
+
+<!-- Main content -->
+<div class="country-workspace" id="country-workspace" style="display:none">
+
+  <!-- Hero -->
+  <div class="country-hero">
+    <div>
+      <div class="country-hero-name" id="hero-name">—</div>
+      <div class="country-hero-code" id="hero-code">—</div>
+    </div>
+    <div class="country-hero-stats">
+      <div class="hero-stat">
+        <div class="hero-stat-val" id="hero-member-since">—</div>
+        <div class="hero-stat-lbl">Member since</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-val" id="hero-idealpoint">—</div>
+        <div class="hero-stat-lbl" id="hero-idealpoint-lbl">Avg ideal point</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-val" id="hero-consensus">—</div>
+        <div class="hero-stat-lbl" id="hero-consensus-lbl">Avg agreement</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DNA stripe -->
+  <div class="dna-section">
+    <div class="dna-label">Agreement with majority · all years</div>
+    <svg id="dna-svg" height="55"></svg>
+  </div>
+
+  <!-- Year control -->
+  <div class="section-card" style="padding: 14px 24px;">
+    <div class="year-control">
+      <label>Year</label>
+      <input type="range" id="year-slider" min="1946" max="2024" value="2024" step="1">
+      <div class="year-val" id="year-val">2024</div>
+    </div>
+  </div>
+
+  <!-- Ideal point + topic agreement -->
+  <div class="two-col">
+    <div class="section-card">
+      <div class="section-title">Ideal Point Over Time</div>
+      <svg id="idealpoint-chart"></svg>
+    </div>
+    <div class="section-card">
+      <div class="section-title">Agreement by Topic</div>
+      <div class="topic-bars" id="topic-bars">
+        <div style="font-size:10px;color:var(--text-muted);font-style:italic;">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Partners -->
+  <div class="two-col">
+    <div class="section-card">
+      <div class="section-title">Closest Voting Partners</div>
+      <div class="partner-list" id="partners-close"></div>
+    </div>
+    <div class="section-card">
+      <div class="section-title">Most Distant Voting Partners</div>
+      <div class="partner-list" id="partners-distant"></div>
+    </div>
+  </div>
+
+  <!-- Votes table -->
+  <div class="section-card">
+    <div class="section-title">Voting Record</div>
+    <div class="table-controls">
+      <input type="text" id="table-search" placeholder="Search resolutions…">
+      <div class="vote-filter">
+        <button class="vf-btn active" data-vote="all">All</button>
+        <button class="vf-btn" data-vote="Y">Yes</button>
+        <button class="vf-btn" data-vote="N">No</button>
+        <button class="vf-btn" data-vote="A">Abstain</button>
+      </div>
+    </div>
+    <div class="votes-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th><th>Resolution</th><th>Vote</th><th>Topic</th>
+            <th>Title</th><th>Total Yes</th><th>Total No</th><th>Link</th>
+          </tr>
+        </thead>
+        <tbody id="votes-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+import {
+  DATA_PATHS, colorScale,
+  DB, loadDatabase, query,
+  getCountryName, getIso2, flagImg,
+  renderDNA,
+} from "./utils.js";
+
+const params   = new URLSearchParams(window.location.search);
+const MS_CODE  = params.get("code")?.toUpperCase() ?? null;
+let YEAR       = 2024;
+let allVotes   = [];
+let voteFilter = "all";
+let searchTerm = "";
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Hero — all-time stats on load, per-year after slider
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderHero() {
+  const rows = query(
+    "SELECT country_name, first_year, iso2 FROM countries WHERE ms_code = ?", [MS_CODE]
+  );
+  if (!rows.length) return;
+  const c = rows[0];
+
+  document.title = `${c.country_name} — Who Votes With Whom`;
+  document.getElementById("hero-name").innerHTML = `
+    ${c.iso2
+      ? `<img src="https://flagcdn.com/48x36/${c.iso2}.png"
+             srcset="https://flagcdn.com/96x72/${c.iso2}.png 2x"
+             style="border-radius:3px;vertical-align:middle;margin-right:12px;"
+             alt="${c.country_name}">`
+      : ""}
+    ${c.country_name}`;
+  document.getElementById("hero-code").textContent   = MS_CODE;
+  document.getElementById("country-tab").textContent = c.country_name;
+  document.getElementById("hero-member-since").textContent = c.first_year;
+
+  renderHeroStats(null);
+}
+
+function renderHeroStats(year) {
+  if (year === null) {
+    const ip = query(
+      "SELECT ROUND(AVG(ideal_point), 3) as avg FROM ideal_points WHERE ms_code = ?", [MS_CODE]
+    );
+    document.getElementById("hero-idealpoint").textContent =
+      ip.length && ip[0].avg ? ip[0].avg : "—";
+    document.getElementById("hero-idealpoint-lbl").textContent = "Avg ideal point";
+
+    const cons = query(
+      "SELECT ROUND(AVG(consensus) * 100, 1) as avg FROM mat_consensus_overall WHERE ms_code = ?", [MS_CODE]
+    );
+    document.getElementById("hero-consensus").textContent =
+      cons.length && cons[0].avg ? cons[0].avg + "%" : "—";
+    document.getElementById("hero-consensus-lbl").textContent = "Avg agreement";
+  } else {
+    const ip = query(
+      "SELECT ideal_point FROM ideal_points WHERE ms_code = ? AND year = ?", [MS_CODE, year]
+    );
+    document.getElementById("hero-idealpoint").textContent =
+      ip.length ? ip[0].ideal_point.toFixed(3) : "—";
+    document.getElementById("hero-idealpoint-lbl").textContent = `Ideal point ${year}`;
+
+    const cons = query(
+      "SELECT consensus FROM mat_consensus_overall WHERE ms_code = ? AND year = ?", [MS_CODE, year]
+    );
+    document.getElementById("hero-consensus").textContent =
+      cons.length ? (cons[0].consensus * 100).toFixed(1) + "%" : "—";
+    document.getElementById("hero-consensus-lbl").textContent = `Avg agreement ${year}`;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Ideal point chart
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderIdealPointChart() {
+  const rows = query(
+    "SELECT year, ideal_point, q5, q95 FROM ideal_points WHERE ms_code = ? ORDER BY year", [MS_CODE]
+  );
+  if (!rows.length) return;
+
+  const svg    = d3.select("#idealpoint-chart");
+  const width  = svg.node().clientWidth;
+  const height = 200;
+  const margin = { top: 16, right: 16, bottom: 28, left: 40 };
+  const w = width  - margin.left - margin.right;
+  const h = height - margin.top  - margin.bottom;
+
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
+  svg.selectAll("*").remove();
+
+  const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+  const x = d3.scaleLinear().domain(d3.extent(rows, d => d.year)).range([0, w]);
+  const y = d3.scaleLinear()
+    .domain([d3.min(rows, d => d.q5) - 0.2, d3.max(rows, d => d.q95) + 0.2])
+    .range([h, 0]);
+
+  g.append("line")
+    .attr("x1", 0).attr("x2", w).attr("y1", y(0)).attr("y2", y(0))
+    .attr("stroke", "#1e3050").attr("stroke-width", 1).attr("stroke-dasharray", "4,4");
+
+  g.append("path").datum(rows)
+    .attr("d", d3.area().x(d=>x(d.year)).y0(d=>y(d.q5)).y1(d=>y(d.q95)).curve(d3.curveMonotoneX))
+    .attr("fill", "#1a4a80").attr("opacity", 0.4);
+
+  g.append("path").datum(rows)
+    .attr("d", d3.line().x(d=>x(d.year)).y(d=>y(d.ideal_point)).curve(d3.curveMonotoneX))
+    .attr("fill", "none").attr("stroke", "#4a9eff").attr("stroke-width", 2);
+
+  const yearRow = rows.find(r => r.year === YEAR);
+  if (yearRow) {
+    g.append("circle")
+      .attr("cx", x(yearRow.year)).attr("cy", y(yearRow.ideal_point))
+      .attr("r", 4).attr("fill", "#ffffff").attr("stroke", "#4a9eff").attr("stroke-width", 2);
+  }
+
+  g.append("g").attr("transform", `translate(0,${h})`)
+    .call(d3.axisBottom(x).ticks(6).tickFormat(d3.format("d")))
+    .selectAll("text, line, path")
+    .attr("stroke","#3d5478").attr("fill","#3d5478").style("font-size","9px");
+
+  g.append("g").call(d3.axisLeft(y).ticks(5))
+    .selectAll("text, line, path")
+    .attr("stroke","#3d5478").attr("fill","#3d5478").style("font-size","9px");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Topic bars
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderTopicBars() {
+  const rows = query(`
+    SELECT category_name, consensus FROM mat_consensus_by_category
+    WHERE ms_code = ? AND year = ? ORDER BY consensus DESC
+  `, [MS_CODE, YEAR]);
+
+  const container = document.getElementById("topic-bars");
+  if (!rows.length) {
+    container.innerHTML = '<div style="font-size:10px;color:var(--text-muted);font-style:italic;">No topic data for this year.</div>';
+    return;
+  }
+
+  container.innerHTML = rows.map(r => `
+    <div class="topic-row">
+      <div class="topic-label">${r.category_name}</div>
+      <div class="topic-bar-wrap">
+        <div class="topic-bar-fill" style="width:${(r.consensus * 100).toFixed(1)}%"></div>
+      </div>
+      <div class="topic-score">${(r.consensus * 100).toFixed(1)}%</div>
+    </div>`).join("");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Partners
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderPartners() {
+  const close = query(`
+    SELECT CASE WHEN ms_code1 = ? THEN ms_code2 ELSE ms_code1 END AS other_code, agreement
+    FROM agreement_overall
+    WHERE year = ? AND (ms_code1 = ? OR ms_code2 = ?)
+    ORDER BY agreement DESC LIMIT 5
+  `, [MS_CODE, YEAR, MS_CODE, MS_CODE]);
+
+  const distant = query(`
+    SELECT CASE WHEN ms_code1 = ? THEN ms_code2 ELSE ms_code1 END AS other_code, agreement
+    FROM agreement_overall
+    WHERE year = ? AND (ms_code1 = ? OR ms_code2 = ?) AND n_shared >= 10
+    ORDER BY agreement ASC LIMIT 5
+  `, [MS_CODE, YEAR, MS_CODE, MS_CODE]);
+
+  function renderList(containerId, rows, type) {
+    const container = document.getElementById(containerId);
+    if (!rows.length) {
+      container.innerHTML = '<div style="font-size:10px;color:var(--text-muted);font-style:italic;">No data.</div>';
+      return;
+    }
+    container.innerHTML = rows.map((r, i) => {
+      const pct  = (r.agreement * 100).toFixed(1);
+      const barW = type === "close"
+        ? ((r.agreement - 0.4) / 0.6 * 100).toFixed(1)
+        : ((1 - r.agreement) / 0.6 * 100).toFixed(1);
+      const info = query("SELECT country_name, iso2 FROM countries WHERE ms_code = ?", [r.other_code]);
+      const name = info.length ? info[0].country_name : r.other_code;
+      const iso2 = info.length ? info[0].iso2 : null;
+      return `
+        <div class="partner-row">
+          <div class="partner-rank">${i + 1}</div>
+          ${iso2
+            ? `<img src="https://flagcdn.com/16x12/${iso2}.png"
+                    srcset="https://flagcdn.com/32x24/${iso2}.png 2x"
+                    style="border-radius:1px;flex-shrink:0;" alt="${name}">`
+            : `<div style="width:16px;flex-shrink:0;"></div>`}
+          <div class="partner-name">${name}</div>
+          <div class="partner-code">${r.other_code}</div>
+          <div class="partner-bar-wrap">
+            <div class="partner-bar ${type}" style="width:${barW}%"></div>
+          </div>
+          <div class="partner-score">${pct}%</div>
+        </div>`;
+    }).join("");
+  }
+
+  renderList("partners-close",   close,   "close");
+  renderList("partners-distant", distant, "distant");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Votes table
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderVotesTable() {
+  let filtered = allVotes.filter(r => {
+    const matchVote   = voteFilter === "all" || r.ms_vote === voteFilter;
+    const matchSearch = !searchTerm ||
+      r.title?.toLowerCase().includes(searchTerm) ||
+      r.resolution?.toLowerCase().includes(searchTerm) ||
+      r.subject_category?.toLowerCase().includes(searchTerm);
+    return matchVote && matchSearch;
+  });
+
+  filtered.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+  const display = filtered.slice(0, 200);
+
+  const voteClass = { Y:"vote-y", N:"vote-n", A:"vote-a", X:"vote-x" };
+  const voteLabel = { Y:"Yes",    N:"No",     A:"Abstain", X:"Absent" };
+
+  document.getElementById("votes-tbody").innerHTML = display.map(r => `
+    <tr>
+      <td>${r.date ?? "—"}</td>
+      <td>${r.resolution ?? "—"}</td>
+      <td class="${voteClass[r.ms_vote] ?? ""}">${voteLabel[r.ms_vote] ?? r.ms_vote}</td>
+      <td>${r.subject_category ?? "—"}</td>
+      <td style="max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+          title="${(r.title ?? "").replace(/"/g,'&quot;')}">${r.title ?? "—"}</td>
+      <td>${r.total_yes ?? "—"}</td>
+      <td>${r.total_no  ?? "—"}</td>
+      <td>${r.undl_link
+        ? `<a class="undl-link" href="${r.undl_link}" target="_blank">↗</a>`
+        : "—"}</td>
+    </tr>`).join("");
+
+  if (filtered.length > 200) {
+    document.getElementById("votes-tbody").innerHTML += `
+      <tr><td colspan="8" style="text-align:center;color:var(--text-muted);font-style:italic;padding:12px;">
+        Showing 200 of ${filtered.length} results — refine your search to see more.
+      </td></tr>`;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Year change
+// ─────────────────────────────────────────────────────────────────────────────
+
+function onYearChange(year) {
+  YEAR = year;
+  document.getElementById("year-val").textContent = year;
+  renderHeroStats(year);
+  renderIdealPointChart();
+  renderTopicBars();
+  renderPartners();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Boot
+// ─────────────────────────────────────────────────────────────────────────────
+
+(async () => {
+  if (!MS_CODE) {
+    document.getElementById("loading-text").textContent     = "No country code provided.";
+    document.getElementById("loading-progress").textContent = "Add ?code=AUT to the URL.";
+    return;
+  }
+
+  try {
+    await loadDatabase();
+
+    document.getElementById("loading-text").textContent = "Loading voting record";
+    const raw = await d3.csv(DATA_PATHS.unclean);
+    allVotes  = raw.filter(r => r.ms_code === MS_CODE);
+
+    document.getElementById("page-loading").style.display     = "none";
+    document.getElementById("country-workspace").style.display = "flex";
+
+    renderHero();
+    renderDNA(MS_CODE);
+    renderIdealPointChart();
+    renderTopicBars();
+    renderPartners();
+    renderVotesTable();
+
+    document.getElementById("year-slider").addEventListener("input", function() {
+      onYearChange(+this.value);
+    });
+
+    document.querySelectorAll(".vf-btn").forEach(btn => {
+      btn.addEventListener("click", function() {
+        document.querySelectorAll(".vf-btn").forEach(b => b.classList.remove("active"));
+        this.classList.add("active");
+        voteFilter = this.dataset.vote;
+        renderVotesTable();
+      });
+    });
+
+    document.getElementById("table-search").addEventListener("input", function() {
+      searchTerm = this.value.toLowerCase();
+      renderVotesTable();
+    });
+
+    window.addEventListener("resize", () => renderDNA(MS_CODE));
+
+  } catch(err) {
+    console.error("Boot error:", err);
+    document.getElementById("loading-text").textContent     = "Error loading data";
+    document.getElementById("loading-progress").textContent = err.message;
+  }
+})();
+</script>
+</body>
+</html>

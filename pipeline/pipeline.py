@@ -167,6 +167,40 @@ country_index = (
 )
 print(f"  Countries : {len(country_index)}")
 
+# ISO3 → ISO2 mapping for flag CDN
+ISO3_TO_ISO2 = {
+    "AFG":"af","ALB":"al","DZA":"dz","AGO":"ao","ARG":"ar","ARM":"am","AUS":"au",
+    "AUT":"at","AZE":"az","BGD":"bd","BLR":"by","BEL":"be","BEN":"bj","BTN":"bt",
+    "BOL":"bo","BWA":"bw","BRA":"br","BGR":"bg","BFA":"bf","BDI":"bi","KHM":"kh",
+    "CMR":"cm","CAN":"ca","CAF":"cf","TCD":"td","CHL":"cl","CHN":"cn","COL":"co",
+    "COG":"cg","COD":"cd","CRI":"cr","HRV":"hr","CUB":"cu","CYP":"cy","CZE":"cz",
+    "DNK":"dk","DJI":"dj","DOM":"do","ECU":"ec","EGY":"eg","SLV":"sv","ERI":"er",
+    "EST":"ee","SWZ":"sz","ETH":"et","FJI":"fj","FIN":"fi","FRA":"fr","GAB":"ga",
+    "GMB":"gm","GEO":"ge","DEU":"de","GHA":"gh","GRC":"gr","GRD":"gd","GTM":"gt",
+    "GIN":"gn","GNB":"gw","GUY":"gy","HTI":"ht","HND":"hn","HUN":"hu","IND":"in",
+    "IDN":"id","IRN":"ir","IRQ":"iq","IRL":"ie","ISR":"il","ITA":"it","JAM":"jm",
+    "JPN":"jp","JOR":"jo","KAZ":"kz","KEN":"ke","PRK":"kp","KOR":"kr","KWT":"kw",
+    "KGZ":"kg","LAO":"la","LVA":"lv","LBN":"lb","LSO":"ls","LBR":"lr","LBY":"ly",
+    "LTU":"lt","LUX":"lu","MDG":"mg","MWI":"mw","MYS":"my","MLI":"ml","MLT":"mt",
+    "MRT":"mr","MUS":"mu","MEX":"mx","MDA":"md","MCO":"mc","MNG":"mn","MNE":"me",
+    "MAR":"ma","MOZ":"mz","MMR":"mm","NAM":"na","NPL":"np","NLD":"nl","NZL":"nz",
+    "NIC":"ni","NER":"ne","NGA":"ng","MKD":"mk","NOR":"no","OMN":"om","PAK":"pk",
+    "PLW":"pw","PAN":"pa","PNG":"pg","PRY":"py","PER":"pe","PHL":"ph","POL":"pl",
+    "PRT":"pt","QAT":"qa","ROU":"ro","RUS":"ru","RWA":"rw","WSM":"ws","STP":"st",
+    "SAU":"sa","SEN":"sn","SRB":"rs","SLE":"sl","SVK":"sk","SVN":"si","SLB":"sb",
+    "SOM":"so","ZAF":"za","SSD":"ss","ESP":"es","LKA":"lk","SDN":"sd","SUR":"sr",
+    "SWE":"se","CHE":"ch","SYR":"sy","TJK":"tj","THA":"th","TLS":"tl","TGO":"tg",
+    "TON":"to","TTO":"tt","TUN":"tn","TUR":"tr","TKM":"tm","TUV":"tv","UGA":"ug",
+    "UKR":"ua","ARE":"ae","GBR":"gb","USA":"us","URY":"uy","UZB":"uz","VUT":"vu",
+    "VEN":"ve","VNM":"vn","YEM":"ye","ZMB":"zm","ZWE":"zw","PSE":"ps","VCT":"vc",
+    "SYC":"sc","FLK":"fk","GNQ":"gq","CPV":"cv","COM":"km","DMA":"dm","BHS":"bs",
+    "BHR":"bh","BRB":"bb","BLZ":"bz","BIH":"ba","BRN":"bn","ATG":"ag","GER":"de",
+    "LIE": "li", "SMR": "sm",
+}
+
+country_index["iso2"] = country_index["ms_code"].map(ISO3_TO_ISO2)
+print(f"  Countries with iso2 mapping: {country_index['iso2'].notna().sum()} / {len(country_index)}")
+
 # Lean ideal points — one row per country per year
 ideal_points_lean = (
     un_joined[["ms_code", "year", "IdealPointFP", "Q5%FP", "Q95%FP"]]
@@ -190,6 +224,45 @@ res_counts = (
     .rename(columns={"resolution": "n_resolutions"})
 )
 print(f"  Resolution count rows : {len(res_counts)}")
+
+# ── Participation rates ───────────────────────────────────────────────────────
+
+# Resolutions each country actually voted on (Y/N/A, not absent)
+un_participation = (
+    un_voted_all[un_voted_all["vote_num"].notna()]
+    .groupby("ms_code")["resolution"]
+    .nunique()
+    .reset_index()
+    .rename(columns={"resolution": "n_voted"})
+)
+
+# First and last year per country
+country_years = (
+    un_voted_all.groupby("ms_code")["year"]
+    .agg(first_year="min", last_year="max")
+    .reset_index()
+)
+
+# Total resolutions that occurred during each country's membership
+res_by_year = res_counts.set_index("year")["n_resolutions"]
+
+def total_possible(row):
+    years = range(int(row.first_year), int(row.last_year) + 1)
+    return sum(res_by_year.get(y, 0) for y in years)
+
+country_years["total_possible"] = country_years.apply(total_possible, axis=1)
+country_years["years_active"]   = country_years["last_year"] - country_years["first_year"] + 1
+
+participation = country_years.merge(un_participation, on="ms_code", how="left")
+participation["participation_rate"] = (
+    participation["n_voted"] / participation["total_possible"]
+).round(4)
+
+global_part_avg = round(float(participation["participation_rate"].mean()), 4)
+global_part_df  = pd.DataFrame([{"avg_rate": global_part_avg}])
+
+print(f"  Participation rows : {len(participation)}")
+print(f"  Global avg participation rate : {global_part_avg:.1%}")
 
 # Categories — exclude Uncategorized and Other
 all_categories = sorted(
@@ -337,7 +410,7 @@ conn = sqlite3.connect(DB_PATH)
 # ── Lookup tables ─────────────────────────────────────────────────────────────
 
 print("  Writing countries...")
-country_index[["ms_code", "country_name", "first_year", "last_year"]].to_sql(
+country_index[["ms_code", "country_name", "first_year", "last_year", "iso2"]].to_sql(
     "countries", conn, if_exists="replace", index=False)
 
 print("  Writing categories...")
@@ -348,6 +421,15 @@ ideal_points_lean.to_sql("ideal_points", conn, if_exists="replace", index=False)
 
 print("  Writing resolution_counts...")
 res_counts.to_sql("resolution_counts", conn, if_exists="replace", index=False)
+
+print("  Writing country_participation...")
+participation[["ms_code", "first_year", "last_year", "years_active",
+               "total_possible", "n_voted", "participation_rate"]].to_sql(
+    "country_participation", conn, if_exists="replace", index=False)
+conn.execute("CREATE INDEX idx_cp_code ON country_participation(ms_code)")
+
+print("  Writing global_participation...")
+global_part_df.to_sql("global_participation", conn, if_exists="replace", index=False)
 
 print("  Writing resolution_counts_by_category...")
 res_counts_by_category[["year", "category_id", "n_resolutions"]].to_sql(

@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Country Story — Who Votes With Whom</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Lora:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="story.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+</head>
+<body>
+
+<div class="dna-tooltip" id="dna-tooltip"></div>
+
+<nav>
+  <div style="display:flex;align-items:baseline">
+    <span class="nav-brand">Who Votes With Whom</span>
+    <span class="nav-sub">UN General Assembly · 1946–2025</span>
+  </div>
+  <div class="nav-tabs">
+    <a class="nav-tab" href="map.html">World Map</a>
+    <button class="nav-tab">Network</button>
+    <button class="nav-tab">Timeline</button>
+    <button class="nav-tab">Compare</button>
+    <button class="nav-tab active" id="country-tab">—</button>
+  </div>
+</nav>
+
+<div id="page-loading">
+  <div class="loading-text" id="loading-text">Loading database</div>
+  <div class="loading-bar"><div class="loading-fill"></div></div>
+  <div class="loading-progress" id="loading-progress"></div>
+</div>
+
+<div id="story"></div>
+
+<script type="module">
+import {
+  DATA_PATHS, BLOCS, colorScale,
+  DB, loadDatabase, query,
+  getCountryName, getIso2, flagImg, ordinal,
+  renderDNA,
+} from "./utils.js";
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────────────────────────────────────
+
+const params  = new URLSearchParams(window.location.search);
+const MS_CODE = params.get("code")?.toUpperCase() ?? null;
+
+let allVotes = [];
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Chapter builder
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makeChapter(num, insightHtml, visualHtml, labelText) {
+  return `
+    <div class="chapter" data-chapter="${num}">
+      <div class="ch-num">— ${String(num).padStart(2,"0")}</div>
+      <div class="ch-insight">${insightHtml}</div>
+      <div class="ch-visual">
+        <div class="ch-visual-label">${labelText}</div>
+        ${visualHtml}
+      </div>
+      <div class="ch-scroll-cue">↓ scroll</div>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Chapter 1 — Profile + DNA stripe
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildChapter1(country) {
+  const totalVotes = allVotes.length;
+
+  const partRow   = query(
+    "SELECT participation_rate, years_active FROM country_participation WHERE ms_code = ?", [MS_CODE]
+  )[0];
+  const globalAvg = query("SELECT avg_rate FROM global_participation")[0]?.avg_rate ?? 0.7;
+
+  const partRate  = partRow?.participation_rate ?? null;
+  const yearsActive = partRow?.years_active ?? null;
+
+  const allRates  = query("SELECT participation_rate FROM country_participation ORDER BY participation_rate");
+  const rank      = allRates.findIndex(r => r.participation_rate >= partRate);
+  const pctRank   = rank / allRates.length;
+
+  const partLabel = pctRank >= 0.9  ? "one of the most active participants"
+                  : pctRank >= 0.75 ? "a consistent presence"
+                  : pctRank >= 0.35 ? "a reliable participant"
+                  : pctRank >= 0.1  ? "a relatively quiet voice"
+                  :                   "one of the least active participants";
+
+  const yearsClause = yearsActive && yearsActive < 20
+    ? ` during its <span class="hl">${yearsActive} years</span> of membership`
+    : "";
+
+  const yesVotes = allVotes.filter(r => r.ms_vote === "Y").length;
+  const yesPct   = totalVotes ? ((yesVotes / totalVotes) * 100).toFixed(1) : "—";
+  const partPct  = partRate  ? (partRate * 100).toFixed(1) : "—";
+  const globalPct = (globalAvg * 100).toFixed(1);
+
+  const insight = `
+    ${flagImg(country.iso2, country.country_name, 36, 27)}
+    <span style="margin-left:10px;">
+      Since joining the UN in <span class="hl">${country.first_year}</span>,
+      <span class="hl">${country.country_name}</span> has been ${partLabel}
+      in the General Assembly — participating in
+      <span class="hl">${partPct}%</span> of votes${yearsClause},
+      compared to a global average of <span class="hl">${globalPct}%</span>.
+      Of the <span class="hl">${totalVotes.toLocaleString()}</span> resolutions
+      it has weighed in on, it cast a <span class="hl-green">Yes</span> vote
+      <span class="hl">${yesPct}%</span> of the time.
+    </span>`;
+
+  return makeChapter(1, insight, `<svg id="dna-svg" height="55"></svg>`, "Agreement with majority vote · all years");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Chapter 2 — Overall alignment + dot plot
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildChapter2(country) {
+  const cons = query(
+    "SELECT ROUND(AVG(consensus),4) as avg FROM mat_consensus_overall WHERE ms_code = ?", [MS_CODE]
+  )[0].avg;
+
+  const allCons = query(
+    "SELECT ms_code, AVG(consensus) as avg FROM mat_consensus_overall GROUP BY ms_code ORDER BY avg"
+  );
+  const rank     = allCons.findIndex(r => r.ms_code === MS_CODE) + 1;
+  const pctBelow = Math.round((rank / allCons.length) * 100);
+
+  const euCodes = BLOCS.EU.map(c => `'${c}'`).join(",");
+  const euAvg   = query(
+    `SELECT ROUND(AVG(consensus),4) as avg FROM mat_consensus_overall WHERE ms_code IN (${euCodes})`
+  )[0].avg;
+
+  const direction = cons > euAvg ? "above" : "below";
+  const diff      = Math.abs(((cons - euAvg) * 100)).toFixed(1);
+  const hlClass   = cons > euAvg ? "hl-green" : "hl-red";
+
+  const insight = `
+    Overall, <span class="hl">${country.country_name}</span> agrees with the majority vote
+    <span class="hl">${(cons * 100).toFixed(1)}%</span> of the time —
+    more aligned than <span class="hl">${pctBelow}%</span> of all member states.
+    That is <span class="${hlClass}">${diff} points ${direction}</span> the EU average.`;
+
+  return { html: makeChapter(2, insight, `<svg id="dotplot-svg"></svg>`, "Average agreement score · all member states"), cons, allCons };
+}
+
+function renderDotPlot(cons, allCons) {
+  const activeBlocs = new Set(["EU", "NATO", "BRICS", "Other"]);
+
+  const countryBlocs = new Map();
+  for (const [bloc, codes] of Object.entries(BLOCS)) {
+    codes.forEach(c => {
+      if (!countryBlocs.has(c)) countryBlocs.set(c, []);
+      countryBlocs.get(c).push(bloc);
+    });
+  }
+
+  const blocColor = { "EU":"#1a3a6e", "NATO":"#2980b9", "BRICS":"#e67e22", "Other":"#c8c4bc" };
+
+  const container = document.getElementById("dotplot-svg").parentNode;
+  container.innerHTML = `
+    <svg id="dotplot-svg" style="width:100%;height:80px;display:block;"></svg>
+    <div id="dotplot-legend" style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;"></div>`;
+
+  const svg = d3.select("#dotplot-svg");
+  const w   = svg.node().clientWidth;
+  const h   = 80;
+  svg.attr("viewBox", `0 0 ${w} ${h}`);
+
+  const x = d3.scaleLinear()
+    .domain([d3.min(allCons, d => d.avg), d3.max(allCons, d => d.avg)])
+    .range([20, w - 20]);
+
+  svg.append("rect").attr("x",20).attr("y",28).attr("width",w-40).attr("height",4)
+    .attr("fill","#e0dbd0").attr("rx",2);
+
+  const dots = svg.selectAll("circle.dot")
+    .data(allCons.filter(d => d.ms_code !== MS_CODE))
+    .join("circle").attr("class","dot")
+    .attr("cx", d => x(d.avg)).attr("cy",30).attr("r",3.5)
+    .attr("fill", d => {
+      const blocs = countryBlocs.get(d.ms_code);
+      return blocs?.length ? blocColor[blocs[0]] : blocColor["Other"];
+    })
+    .attr("opacity", 0.7)
+    .attr("data-blocs", d => {
+      const blocs = countryBlocs.get(d.ms_code);
+      return blocs?.length ? blocs.join(",") : "Other";
+    });
+
+  const myX = x(cons);
+  svg.append("line").attr("x1",myX).attr("x2",myX).attr("y1",8).attr("y2",50)
+    .attr("stroke","#1a1a2e").attr("stroke-width",2);
+  svg.append("circle").attr("cx",myX).attr("cy",30).attr("r",5)
+    .attr("fill","#1a1a2e").attr("stroke","#fff").attr("stroke-width",1.5);
+  svg.append("text").attr("x",myX).attr("y",6).attr("text-anchor","middle")
+    .attr("font-size","9").attr("fill","#1a1a2e").attr("font-family","Outfit,sans-serif")
+    .attr("font-weight","600").text(MS_CODE);
+
+  svg.append("text").attr("x",20).attr("y",66).attr("font-size","9").attr("fill","#9898b0")
+    .attr("font-family","Outfit,sans-serif").text("Low agreement");
+  svg.append("text").attr("x",w-20).attr("y",66).attr("text-anchor","end")
+    .attr("font-size","9").attr("fill","#9898b0").attr("font-family","Outfit,sans-serif")
+    .text("High agreement");
+
+  function updateDots() {
+    dots.attr("opacity", function() {
+      const blocs = (this.getAttribute("data-blocs") ?? "Other").split(",");
+      return blocs.some(b => activeBlocs.has(b)) ? 0.7 : 0;
+    });
+  }
+
+  const legend = document.getElementById("dotplot-legend");
+  [{ key:"EU",color:"#1a3a6e" },{ key:"NATO",color:"#2980b9" },
+   { key:"BRICS",color:"#e67e22" },{ key:"Other",color:"#c8c4bc" }].forEach(item => {
+    const btn = document.createElement("button");
+    btn.style.cssText = `display:inline-flex;align-items:center;gap:6px;background:none;
+      border:none;cursor:pointer;font-family:'Outfit',sans-serif;font-size:10px;
+      color:#5a5a7a;padding:2px 0;transition:opacity 0.15s;`;
+    btn.innerHTML = `
+      <span id="legend-dot-${item.key}" style="width:10px;height:10px;border-radius:50%;
+        background:${item.color};display:inline-block;transition:opacity 0.15s;"></span>
+      <span id="legend-label-${item.key}">${item.key}</span>`;
+    btn.addEventListener("click", () => {
+      if (activeBlocs.has(item.key)) {
+        activeBlocs.delete(item.key);
+        document.getElementById(`legend-dot-${item.key}`).style.opacity   = "0.25";
+        document.getElementById(`legend-label-${item.key}`).style.opacity = "0.4";
+      } else {
+        activeBlocs.add(item.key);
+        document.getElementById(`legend-dot-${item.key}`).style.opacity   = "1";
+        document.getElementById(`legend-label-${item.key}`).style.opacity = "1";
+      }
+      updateDots();
+    });
+    legend.appendChild(btn);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Chapter 3 — Long-term partners
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildChapter3(country) {
+  const rows = query(`
+    SELECT CASE WHEN ms_code1 = ? THEN ms_code2 ELSE ms_code1 END AS other_code,
+           ROUND(AVG(agreement), 4) AS avg_agr, COUNT(DISTINCT year) AS n_years
+    FROM agreement_overall WHERE (ms_code1 = ? OR ms_code2 = ?)
+    GROUP BY other_code HAVING n_years >= 30 ORDER BY avg_agr DESC LIMIT 3
+  `, [MS_CODE, MS_CODE, MS_CODE]);
+
+  if (!rows.length) return null;
+
+  const top     = rows[0];
+  const topName = getCountryName(top.other_code);
+
+  const insight = `
+    <span class="hl">${country.country_name}</span>'s most enduring voting partner is
+    <span class="hl">${topName}</span> — they have voted together for
+    <span class="hl">${top.n_years} years</span>, agreeing
+    <span class="hl-green">${(top.avg_agr * 100).toFixed(1)}%</span> of the time.`;
+
+  const listHtml = rows.map((r, i) => {
+    const name = getCountryName(r.other_code);
+    const iso2 = getIso2(r.other_code);
+    return `
+      <div class="partner-row">
+        <div class="partner-rank">${i+1}</div>
+        ${flagImg(iso2, name, 20, 15)}
+        <div class="partner-name">${name}</div>
+        <div class="partner-meta">${r.n_years} years together</div>
+        <div class="partner-score-strong close">${(r.avg_agr*100).toFixed(1)}%</div>
+      </div>`;
+  }).join("");
+
+  return makeChapter(3, insight, `<div class="partner-list">${listHtml}</div>`,
+    "Longest-running voting partnerships · min 30 years shared data");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Chapter 4 — Emerging & drifting partners
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildChapter4(country) {
+  const shifts = query(`
+    SELECT CASE WHEN ms_code1 = ? THEN ms_code2 ELSE ms_code1 END AS other_code,
+           ROUND(AVG(CASE WHEN year < 2000 THEN agreement END), 4) AS pre2000,
+           ROUND(AVG(CASE WHEN year >= 2000 THEN agreement END), 4) AS post2000,
+           COUNT(CASE WHEN year < 2000 THEN 1 END) AS n_pre,
+           COUNT(CASE WHEN year >= 2000 THEN 1 END) AS n_post
+    FROM agreement_overall WHERE (ms_code1 = ? OR ms_code2 = ?)
+    GROUP BY other_code HAVING n_pre >= 5 AND n_post >= 5
+      AND pre2000 IS NOT NULL AND post2000 IS NOT NULL
+  `, [MS_CODE, MS_CODE, MS_CODE]);
+
+  shifts.forEach(r => r.delta = r.post2000 - r.pre2000);
+
+  const emerging = shifts.filter(r => r.delta > 0).sort((a,b) => b.delta - a.delta)[0];
+  const drifting = shifts.filter(r => r.delta < 0).sort((a,b) => a.delta - b.delta)[0];
+
+  if (!emerging || !drifting) return null;
+
+  const emergingName = getCountryName(emerging.other_code);
+  const driftingName = getCountryName(drifting.other_code);
+
+  const insight = `
+    Since 2000, <span class="hl-green">${emergingName}</span> has become a closer partner —
+    agreement rose from <span class="hl">${(emerging.pre2000*100).toFixed(1)}%</span> to
+    <span class="hl-green">${(emerging.post2000*100).toFixed(1)}%</span>.
+    Meanwhile agreement with <span class="hl-red">${driftingName}</span> has fallen from
+    <span class="hl">${(drifting.pre2000*100).toFixed(1)}%</span> to
+    <span class="hl-red">${(drifting.post2000*100).toFixed(1)}%</span>.`;
+
+  function shiftCard(r, name, type) {
+    const iso2  = getIso2(r.other_code);
+    const delta = (Math.abs(r.delta) * 100).toFixed(1);
+    const cls   = type === "up" ? "emerging" : "drifting";
+    return `
+      <div class="shift-card ${cls}">
+        <div class="shift-card-arrow">${type === "up" ? "↑" : "↓"}</div>
+        <div class="shift-card-name">${flagImg(iso2, name, 20, 15)} ${name}</div>
+        <div class="shift-card-delta">${type === "up" ? "+" : "−"}${delta} pts</div>
+      </div>`;
+  }
+
+  return makeChapter(4,
+    insight,
+    `<div class="shift-cards">${shiftCard(emerging,emergingName,"up")}${shiftCard(drifting,driftingName,"down")}</div>`,
+    "Change in average agreement before vs after 2000");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Chapter 5 — Topic breakdown vs global median
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildChapter5(country) {
+  const myTopics = query(`
+    SELECT category_name, ROUND(AVG(consensus),4) AS avg
+    FROM mat_consensus_by_category WHERE ms_code = ?
+    GROUP BY category_name ORDER BY avg DESC
+  `, [MS_CODE]);
+
+  const globalMedians = query(`
+    SELECT category_name, ROUND(AVG(consensus),4) AS global_avg
+    FROM mat_consensus_by_category GROUP BY category_name
+  `);
+
+  const medianMap = new Map(globalMedians.map(r => [r.category_name, r.global_avg]));
+  const rows = myTopics.map(r => ({
+    ...r,
+    delta: r.avg - (medianMap.get(r.category_name) ?? 0.7),
+  })).sort((a,b) => b.delta - a.delta);
+
+  const best  = rows[0];
+  const worst = rows[rows.length - 1];
+
+  const bestAbove  = best.delta > 0;
+  const worstBelow = worst.delta < 0;
+
+  const insight = `
+    <span class="hl">${country.country_name}</span> aligns most strongly with the global consensus on
+    <span class="hl">${best.category_name}</span>
+    (<span class="${bestAbove ? 'hl-green' : 'hl-red'}">${bestAbove ? '+' : ''}${(best.delta*100).toFixed(1)} pts
+    ${bestAbove ? 'above' : 'below'} average</span>),
+    but diverges most on <span class="hl">${worst.category_name}</span>
+    (<span class="${worstBelow ? 'hl-red' : 'hl-green'}">${worstBelow ? '' : '+'}${(worst.delta*100).toFixed(1)} pts
+    ${worstBelow ? 'below' : 'above'} average</span>).`;
+
+  const listHtml = rows.map(r => {
+    const cls      = r.delta > 0.02 ? "above" : r.delta < -0.02 ? "below" : "neutral";
+    const deltaStr = (r.delta >= 0 ? "+" : "") + (r.delta * 100).toFixed(1);
+    return `
+      <div class="topic-row">
+        <div class="topic-label">${r.category_name}</div>
+        <div class="topic-bars-wrap">
+          <div class="topic-bar-bg"></div>
+          <div class="topic-bar-fill ${cls}" style="width:${(r.avg*100).toFixed(1)}%"></div>
+        </div>
+        <div class="topic-score">${(r.avg*100).toFixed(1)}%</div>
+        <div class="topic-delta ${r.delta >= 0 ? 'pos' : 'neg'}">${deltaStr}</div>
+      </div>`;
+  }).join("");
+
+  return makeChapter(5, insight, `
+    <div style="display:flex;justify-content:flex-end;gap:20px;margin-bottom:10px;
+      font-size:9px;color:var(--text-3);letter-spacing:0.08em;">
+      <span>Score</span><span style="width:44px;text-align:right;">vs avg</span>
+    </div>
+    <div class="topic-list">${listHtml}</div>`,
+    "Average agreement by topic · delta vs global median");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Chapter 6 — Political trajectory
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildChapter6(country) {
+  const ipRows = query(
+    "SELECT year, ideal_point FROM ideal_points WHERE ms_code = ? ORDER BY year", [MS_CODE]
+  );
+  if (!ipRows.length) return null;
+
+  const first = ipRows[0];
+  const last  = ipRows[ipRows.length - 1];
+  const delta = last.ideal_point - first.ideal_point;
+
+  const direction = delta > 0.1  ? "moving closer to the Western bloc"
+                  : delta < -0.1 ? "drifting away from the Western bloc"
+                  :                "remaining broadly stable";
+
+  let maxJump = 0, maxYear = null;
+  for (let i = 1; i < ipRows.length; i++) {
+    const jump = Math.abs(ipRows[i].ideal_point - ipRows[i-1].ideal_point);
+    if (jump > maxJump) { maxJump = jump; maxYear = ipRows[i].year; }
+  }
+
+  const hlClass = delta > 0.1 ? "hl-green" : delta < -0.1 ? "hl-red" : "hl";
+
+  const insight = `
+    <span class="hl">${country.country_name}</span>'s political position has shifted from
+    <span class="hl">${first.ideal_point.toFixed(2)}</span> in <span class="hl">${first.year}</span>
+    to <span class="${hlClass}">${last.ideal_point.toFixed(2)}</span> in <span class="hl">${last.year}</span> —
+    ${direction} over time.
+    The largest single-year shift occurred in <span class="hl">${maxYear}</span>.`;
+
+  return { html: makeChapter(6, insight, `<svg id="idealpoint-svg"></svg>`,
+    "Ideal point estimate · higher = more Western-aligned"), ipRows, maxYear };
+}
+
+function renderIdealpointChart(ipRows, maxYear) {
+  const svg    = d3.select("#idealpoint-svg");
+  const w      = svg.node().clientWidth;
+  const h      = 180;
+  const margin = { top: 20, right: 16, bottom: 28, left: 36 };
+  const iw     = w - margin.left - margin.right;
+  const ih     = h - margin.top  - margin.bottom;
+
+  svg.attr("viewBox", `0 0 ${w} ${h}`);
+
+  const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+  const x = d3.scaleLinear().domain(d3.extent(ipRows, d => d.year)).range([0, iw]);
+  const y = d3.scaleLinear()
+    .domain([d3.min(ipRows, d => d.ideal_point) - 0.2, d3.max(ipRows, d => d.ideal_point) + 0.2])
+    .range([ih, 0]);
+
+  g.append("line").attr("x1",0).attr("x2",iw).attr("y1",y(0)).attr("y2",y(0))
+    .attr("stroke","#e0dbd0").attr("stroke-width",1).attr("stroke-dasharray","4,4");
+
+  g.append("path").datum(ipRows).attr("fill","#dce6f5").attr("opacity",0.5)
+    .attr("d", d3.area().x(d=>x(d.year)).y0(ih).y1(d=>y(d.ideal_point)).curve(d3.curveMonotoneX));
+
+  g.append("path").datum(ipRows).attr("fill","none").attr("stroke","#1a3a6e").attr("stroke-width",2)
+    .attr("d", d3.line().x(d=>x(d.year)).y(d=>y(d.ideal_point)).curve(d3.curveMonotoneX));
+
+  if (maxYear) {
+    const mx = x(maxYear);
+    g.append("line").attr("x1",mx).attr("x2",mx).attr("y1",0).attr("y2",ih)
+      .attr("stroke","#c0392b").attr("stroke-width",1).attr("stroke-dasharray","3,3").attr("opacity",0.6);
+    g.append("text").attr("x",mx+4).attr("y",12)
+      .attr("font-size","9").attr("fill","#c0392b").attr("font-family","Outfit,sans-serif").text(maxYear);
+  }
+
+  g.append("g").attr("transform",`translate(0,${ih})`)
+    .call(d3.axisBottom(x).ticks(6).tickFormat(d3.format("d")))
+    .call(g => g.select(".domain").remove())
+    .call(g => g.selectAll(".tick line").remove())
+    .call(g => g.selectAll("text").attr("fill","#9898b0").attr("font-size","9").attr("font-family","Outfit,sans-serif"));
+
+  g.append("g").call(d3.axisLeft(y).ticks(4))
+    .call(g => g.select(".domain").remove())
+    .call(g => g.selectAll(".tick line").attr("stroke","#e0dbd0").attr("x2",iw))
+    .call(g => g.selectAll("text").attr("fill","#9898b0").attr("font-size","9").attr("font-family","Outfit,sans-serif"));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Chapter 7 — Minority votes
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildChapter7(country) {
+  const minority = allVotes.filter(r => {
+    if (r.ms_vote === "Y") return +r.total_yes < 10;
+    if (r.ms_vote === "N") return +r.total_no  < 10;
+    return false;
+  }).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "")).slice(0, 3);
+
+  if (!minority.length) return null;
+
+  const voteLabel = { Y:"Yes", N:"No" };
+
+  const insight = `
+    <span class="hl">${country.country_name}</span> has cast votes that put it in a
+    <span class="hl-red">small minority</span> of the General Assembly —
+    sometimes as few as <span class="hl-red">1 of 193</span> nations.
+    These votes reveal where <span class="hl">${country.country_name}</span>
+    is willing to stand alone.`;
+
+  const listHtml = minority.map(r => `
+    <div class="minority-row">
+      <div class="minority-title">${r.title ?? r.resolution}</div>
+      <div class="minority-meta">
+        <span>${r.date}</span>
+        <span>Voted: <strong>${voteLabel[r.ms_vote]}</strong></span>
+        <span>Yes: ${r.total_yes} · No: ${r.total_no}</span>
+        ${r.undl_link ? `<a href="${r.undl_link}" target="_blank"
+          style="color:var(--accent);text-decoration:none;">↗ source</a>` : ""}
+      </div>
+    </div>`).join("");
+
+  return makeChapter(7, insight, `<div class="minority-list">${listHtml}</div>`,
+    "Recent votes where country was in a minority of fewer than 10");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Build & render story
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildStory() {
+  const countryRows = query(
+    "SELECT country_name, first_year, iso2 FROM countries WHERE ms_code = ?", [MS_CODE]
+  );
+  if (!countryRows.length) return;
+  const country = countryRows[0];
+
+  document.title = `${country.country_name} — Who Votes With Whom`;
+  document.getElementById("country-tab").textContent = country.country_name;
+
+  const ch1    = buildChapter1(country);
+  const ch2res = buildChapter2(country);
+  const ch3    = buildChapter3(country);
+  const ch4    = buildChapter4(country);
+  const ch5    = buildChapter5(country);
+  const ch6res = buildChapter6(country);
+  const ch7    = buildChapter7(country);
+
+  const chapters = [ch1, ch2res.html, ch3, ch4, ch5, ch6res?.html, ch7].filter(Boolean);
+
+  document.getElementById("story").innerHTML = chapters.join("") + `
+    <div class="detail-link-wrap">
+      <a class="detail-link" href="country.html?code=${MS_CODE}">Explore full data →</a>
+    </div>`;
+  document.getElementById("story").style.display = "block";
+
+  requestAnimationFrame(() => {
+    renderDNA(MS_CODE);
+    renderDotPlot(ch2res.cons, ch2res.allCons);
+    if (ch6res) renderIdealpointChart(ch6res.ipRows, ch6res.maxYear);
+    window.addEventListener("resize", () => renderDNA(MS_CODE));
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Scroll observer
+// ─────────────────────────────────────────────────────────────────────────────
+
+function initScrollObserver() {
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("visible");
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15 });
+  document.querySelectorAll(".chapter").forEach(ch => observer.observe(ch));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Boot
+// ─────────────────────────────────────────────────────────────────────────────
+
+(async () => {
+  if (!MS_CODE) {
+    document.getElementById("loading-text").textContent     = "No country code in URL";
+    document.getElementById("loading-progress").textContent = "Add ?code=AUT to the URL.";
+    return;
+  }
+
+  try {
+    await loadDatabase();
+
+    document.getElementById("loading-text").textContent = "Loading voting record";
+    const raw = await d3.csv(DATA_PATHS.unclean);
+    allVotes  = raw.filter(r => r.ms_code === MS_CODE);
+
+    document.getElementById("page-loading").style.display = "none";
+
+    buildStory();
+    initScrollObserver();
+
+  } catch(err) {
+    console.error("Boot error:", err);
+    document.getElementById("loading-text").textContent     = "Error loading data";
+    document.getElementById("loading-progress").textContent = err.message;
+  }
+})();
+</script>
+</body>
+</html>

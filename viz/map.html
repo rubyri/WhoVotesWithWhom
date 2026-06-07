@@ -31,6 +31,7 @@
   </div>
   <div class="header-right">
     <nav class="nav-tabs">
+      <button class="nav-tab" id="country-nav-tab" style="display:none" onclick="openCountry()">—</button>
       <button class="nav-tab active">World Map</button>
       <button class="nav-tab">Network</button>
       <button class="nav-tab">Timeline</button>
@@ -273,7 +274,7 @@ async function loadData() {
   loadingText.textContent = "Loading country data";
 
   // Countries
-  for (const r of query("SELECT ms_code, country_name, first_year, last_year FROM countries")) {
+  for (const r of query("SELECT ms_code, country_name, first_year, last_year, iso2 FROM countries")) {
     state.data.countries.set(r.ms_code, r);
   }
 
@@ -469,7 +470,15 @@ function updateInfoCard(iso, info, agr, ip) {
   }
   card.classed("active", true);
   card.html(`
-    <div class="info-country">${info.country_name ?? iso}</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+      ${info.iso2
+        ? `<img src="https://flagcdn.com/24x18/${info.iso2}.png" 
+              srcset="https://flagcdn.com/48x36/${info.iso2}.png 2x"
+              style="border-radius:2px;flex-shrink:0;"
+              alt="${info.country_name}">`
+        : ""}
+      <div class="info-country">${info.country_name ?? iso}</div>
+    </div>
     <div class="info-row">
       <span>ISO code</span>
       <span class="info-val">${iso}</span>
@@ -487,6 +496,21 @@ function updateInfoCard(iso, info, agr, ip) {
       <span class="info-val">${info.first_year ?? "—"}</span>
     </div>
   `);
+}
+
+function openCountry() {
+  if (state.selectedCode) {
+    window.location.href = `country.html?code=${state.selectedCode}`;
+  }
+}
+
+function updateCountryTab(iso) {
+  const tab  = document.getElementById("country-nav-tab");
+  const info = state.data.countries.get(iso);
+  if (info) {
+    tab.textContent    = info.country_name;
+    tab.style.display  = "block";
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -589,6 +613,7 @@ function initMap(world) {
       const iso = numToIso.get(+d.id);
       if (!iso) return; // leave early if no country (eg Antarctica)
       state.selectedCode = iso;
+      updateCountryTab(iso);
       paths.classed("selected", dd => numToIso.get(+dd.id) === iso);  // highlight selected country (load .selected class in CSS)
       if (state.metric === "similarity") {  // if in similarity mode, clicking a country sets it as the new reference for coloring
         loadSimilarity(state.year, iso);
