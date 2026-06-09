@@ -14,10 +14,15 @@ export const BLOCS = {
   EU: ["AUT","BEL","BGR","HRV","CYP","CZE","DNK","EST","FIN","FRA","DEU",
        "GRC","HUN","IRL","ITA","LVA","LTU","LUX","MLT","NLD","POL","PRT",
        "ROU","SVK","SVN","ESP","SWE"],
-  NATO: ["ALB","BEL","CAN","HRV","CZE","DNK","EST","FRA","DEU","GRC","HUN",
+  NATO: ["ALB","BEL","CAN","HRV","CZE","DNK","EST","FIN","FRA","DEU","GRC","HUN",
          "ISL","ITA","LVA","LTU","LUX","MNE","NLD","MKD","NOR","POL","PRT",
-         "ROU","SVK","SVN","ESP","TUR","GBR","USA"],
+         "ROU","SVK","SVN","ESP","TUR","GBR","USA","SWE"],
   BRICS: ["BRA","RUS","IND","CHN","ZAF","EGY","ETH","IRN","ARE","SAU"],
+  PfP: ["AUT","IRL","CHE","MLT","CYP",
+        "UKR","GEO","ARM","AZE","MDA",
+        "KAZ","KGZ","TJK","TKM","UZB",
+        "BIH","SRB"],
+  "Non-Aligned": ["IND","EGY","IDN","GHA","MLI","SEN","TZA","ZMB","CUB","AGO"],
 };
 
 // Agreement color scale — shared across map, country, and story
@@ -27,7 +32,6 @@ export const colorScale = d3.scaleSequential()
 
 // ── Database ──────────────────────────────────────────────────────────────────
 
-// Global database handle — set by loadDatabase(), used by query()
 export let DB = null;
 
 /**
@@ -118,6 +122,29 @@ export function ordinal(n) {
   return n + (s[(v-20)%10] || s[v] || s[0]);
 }
 
+/**
+ * Returns bloc badge HTML for a country code.
+ * Shows small pills for each bloc the country belongs to.
+ */
+export function blocBadges(code) {
+  const badges = Object.entries(BLOCS)
+    .filter(([, codes]) => codes.includes(code))
+    .map(([name]) => {
+      const colors = {
+        "EU":           { bg:"#dce6f5", color:"#1a3a6e" },
+        "NATO":         { bg:"#d6eaf8", color:"#2980b9" },
+        "BRICS":        { bg:"#fdebd0", color:"#e67e22" },
+        "PfP":          { bg:"#d5f5e3", color:"#1e8449" },
+        "Non-Aligned":  { bg:"#e8f8f5", color:"#27ae60" },
+      };
+      const c = colors[name] ?? { bg:"#f0ede6", color:"#5a5a7a" };
+      return `<span style="font-size:8px;letter-spacing:0.06em;text-transform:uppercase;
+        background:${c.bg};color:${c.color};padding:1px 5px;border-radius:3px;
+        font-family:'Outfit',sans-serif;flex-shrink:0;">${name}</span>`;
+    });
+  return badges.join(" ");
+}
+
 // ── DNA stripe ────────────────────────────────────────────────────────────────
 
 /**
@@ -127,15 +154,19 @@ export function ordinal(n) {
  *
  * @param {string} msCode - ISO3 country code to render for
  */
-export function renderDNA(msCode) {
+export function renderDNA(msCode, svgId = "dna-svg") {
   const rows = query(
     "SELECT year, consensus FROM mat_consensus_overall WHERE ms_code = ? ORDER BY year",
     [msCode]
   );
   if (!rows.length) return;
 
-  const svg     = d3.select("#dna-svg");
-  const w       = svg.node().clientWidth;
+  const svgNode = document.getElementById(svgId);
+  if (!svgNode) return;
+  svgNode.style.width = "100%";
+  const w = Math.max(100, svgNode.parentElement?.clientWidth || svgNode.parentElement?.offsetWidth || 600);
+
+  const svg = d3.select(`#${svgId}`);
   const h       = 55;
   const barH    = 34;
   svg.attr("viewBox", `0 0 ${w} ${h}`);
