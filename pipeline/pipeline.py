@@ -378,7 +378,7 @@ else:
     un_cat = un_voted_all[~un_voted_all["subject_category"].isin(["Uncategorized", "Other"])]
     print(f"  Rows used : {len(un_cat):,}")
 
-    by_category_raw = compute_agreement(un_cat, ["year", "subject_category"], min_shared=2)
+    by_category_raw = compute_agreement(un_cat, ["year", "subject_category"], min_shared=1)
 
     # Replace category string with integer foreign key
     by_category = by_category_raw.copy()

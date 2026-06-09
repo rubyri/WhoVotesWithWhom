@@ -1,16 +1,16 @@
 /* Colorshemes inspired by: https://www.radix-ui.com/colors/custom */
   :root {
-    --bg-deep:        #080e1a;
-    --bg-panel:       #0d1626;
-    --bg-card:        #111e33;
-    --bg-hover:       #162440;
-    --border:         #1e3050;
-    --border-bright:  #2a4570;
-    --text-primary:   #e8eef8;
-    --text-secondary: #7a93b8;
-    --text-muted:     #3d5478;
-    --accent:         #4a9eff;
-    --accent-dim:     #1a4a80;
+    --bg-deep:        #172033;
+    --bg-panel:       #1e2a42;
+    --bg-card:        #263653;
+    --bg-hover:       #32486d;
+    --border:         #3f5f8f;
+    --border-bright:  #5f86c2;
+    --text-primary:   #ffffff;
+    --text-secondary: #d4e2f5;
+    --text-muted:     #9bb3d3;
+    --accent:         #6bb6ff;
+    --accent-dim:     #244f82;
 
     /* Agreement color scale — red → amber → teal → blue */
     --col-low:        #c0392b;
@@ -23,6 +23,7 @@
 
   body {
     background: var(--bg-deep);
+    font-size: 14px;
     color: var(--text-primary);
     font-family: 'JetBrains Mono', monospace;
     height: 100vh;
@@ -52,7 +53,7 @@
 
   h1 {
     font-family: 'Syne', sans-serif;
-    font-size: 15px;
+    font-size: 20px;
     font-weight: 800;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -60,7 +61,7 @@
   }
 
   .header-sub {
-    font-size: 10px;
+    font-size: 15px;
     color: var(--text-muted);
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -107,7 +108,7 @@
 
   /* ── Left sidebar ───────────────────────────────────────── */
   .sidebar {
-    width: 260px;
+    width: 300px;
     flex-shrink: 0;
     background: var(--bg-panel);
     border-right: 1px solid var(--border);
@@ -120,7 +121,7 @@
 
   .control-group label {
     display: block;
-    font-size: 9px;
+    font-size: 15px;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--text-muted);
@@ -133,7 +134,7 @@
     border: 1px solid var(--border);
     color: var(--text-primary);
     font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
+    font-size: 13px;
     padding: 7px 10px;
     border-radius: 4px;
     appearance: none;
@@ -143,10 +144,57 @@
   select:focus { outline: none; border-color: var(--accent); }
 
   input[type="range"] {
-    padding: 4px 0;
+    padding: 8px 0;
     accent-color: var(--accent);
     border: none;
     background: transparent;
+  }
+  
+  /* Slider-Leiste */
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 17px;
+    background: var(--bg-card);
+
+    border: 1px solid #ffffff;   /* weiße Umrandung */
+    border-radius: 4px;
+  } 
+  
+  /* Slider-Punkt */
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+
+    background: var(--accent);
+    border: 2px solid #ffffff;
+
+    cursor: pointer;
+
+    margin-top: -5px;
+  }
+
+  /* Firefox */
+  input[type="range"]::-moz-range-thumb {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+
+    background: var(--accent);
+    border: 2px solid #ffffff;
+
+    cursor: pointer;
+  }
+
+  /* Firefox */
+  input[type="range"]::-moz-range-track {
+    height: 6px;
+    background: var(--bg-card);
+
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
   }
 
   .year-display {
@@ -167,11 +215,11 @@
 
   /* Legend */
   .legend-label {
-    font-size: 9px;
+    font-size: 15px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-muted);
-    margin-bottom: 8px;
+    margin-bottom: 10px;
   }
 
   .legend-bar {
@@ -184,7 +232,7 @@
   .legend-ticks {
     display: flex;
     justify-content: space-between;
-    font-size: 9px;
+    font-size: 12px;
     color: var(--text-muted);
   }
 
@@ -202,7 +250,7 @@
 
   .info-country {
     font-family: 'Syne', sans-serif;
-    font-size: 14px;
+    font-size: 20px;
     font-weight: 700;
     color: var(--text-primary);
     margin-bottom: 10px;
@@ -211,7 +259,7 @@
   .info-row {
     display: flex;
     justify-content: space-between;
-    font-size: 10px;
+    font-size: 13px;
     color: var(--text-secondary);
     margin-bottom: 5px;
   }
@@ -244,13 +292,13 @@
 
   .stat-val {
     font-family: 'Syne', sans-serif;
-    font-size: 16px;
+    font-size: 20px;
     font-weight: 700;
     color: var(--accent);
   }
 
   .stat-lbl {
-    font-size: 8px;
+    font-size: 10px;
     color: var(--text-muted);
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -414,3 +462,6 @@
     50%  { width: 60%; margin-left: 20%; }
     100% { width: 0%; margin-left: 100%; }
   }
+
+
+

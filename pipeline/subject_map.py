@@ -23,6 +23,7 @@ SUBJECT_MAP = [
 
     # ── Palestine & Middle East (UN Plenary — special status) ─────────────────
     ("TERRITORIES OCCUPIED BY ISRAEL",                  "Palestine & Middle East"),
+    ("PALESTINIANS--ASSISTANCE", "Palestine & Middle East"),
     ("UNRWA",                                           "Palestine & Middle East"),
     ("PALESTINE QUESTION",                              "Palestine & Middle East"),
     ("MIDDLE EAST SITUATION",                           "Palestine & Middle East"),
@@ -31,6 +32,9 @@ SUBJECT_MAP = [
 
     # ── Disarmament & International Security (First Committee) ────────────────
     ("DISARMAMENT",                                     "Disarmament & International Security"),
+    ("AUTONOMOUS WEAPONS", "Disarmament & International Security"),
+    ("MILITARY EXPENDITURES", "Disarmament & International Security"),
+    ("NUCLEAR TEST BANS", "Disarmament & International Security"),
     ("NUCLEAR WEAPON",                                  "Disarmament & International Security"),
     ("NUCLEAR NON-PROLIFERATION",                       "Disarmament & International Security"),
     ("NUCLEAR-WEAPON-FREE ZONES",                       "Disarmament & International Security"),
@@ -63,6 +67,7 @@ SUBJECT_MAP = [
 
     # ── Special Political & Decolonization (Fourth Committee) ────────────────
     ("DECOLONIZATION",                                  "Special Political & Decolonization"),
+    ("COLONIALISM", "Special Political & Decolonization"),
     ("SELF-DETERMINATION",                              "Special Political & Decolonization"),
     ("NON-SELF-GOVERNING TERRITORIES",                  "Special Political & Decolonization"),
     ("COLONIAL COUNTRIES",                              "Special Political & Decolonization"),
@@ -95,6 +100,7 @@ SUBJECT_MAP = [
 
     # ── Environment & Climate ─────────────────────────────────────────────────
     ("CLIMATE CHANGE",                                  "Environment & Climate"),
+    ("CLIMATE",                                         "Environment & Climate"),
     ("ENVIRONMENT",                                     "Environment & Climate"),
     ("STORMS",                                          "Environment & Climate"),
     ("DISASTER",                                        "Environment & Climate"),
@@ -103,6 +109,7 @@ SUBJECT_MAP = [
 
     # ── International Peace & Security (UN Agenda section 1) ─────────────────
     ("INTERNATIONAL SECURITY",                          "International Peace & Security"),
+    ("CYBERCRIME", "International Peace & Security"),
     ("REGIONAL SECURITY",                               "International Peace & Security"),
     ("PEACE",                                           "International Peace & Security"),
     ("ARMED CONFLICTS",                                 "International Peace & Security"),
@@ -136,6 +143,7 @@ SUBJECT_MAP = [
 
     # ── Administrative, Budgetary & Legal (Fifth + Sixth Committee) ──────────
     ("UN--FINANCIAL SITUATION",                         "Administrative, Budgetary & Legal"),
+    ("UN--ORGANIZATIONAL REFORM", "Administrative, Budgetary & Legal"),
     ("UN. ECONOMIC AND SOCIAL COUNCIL",                 "Administrative, Budgetary & Legal"),
     ("UN INTERIM FORCE",                                "Administrative, Budgetary & Legal"),
     ("UN CONFERENCES",                                  "Administrative, Budgetary & Legal"),

@@ -62,7 +62,7 @@
     </div>
 
     <!-- Topic Filter -->
-    <div class="control-group">
+    <div class="control-group" id="topic-control">
       <label>Filter by topic</label>
       <select id="topic-select">
         <option value="all">All topics</option>
@@ -94,7 +94,7 @@
     <div class="divider"></div>
 
     <!-- Stats -->
-    <div class="stats-row">
+    <div class="stats-row" id="stats-control">
       <div class="stat-pill">
         <div class="stat-val" id="stat-countries">—</div>
         <div class="stat-lbl">Countries</div>
@@ -141,7 +141,7 @@
       border:1px solid #2a4570;
       border-radius:4px;
       padding:6px 14px;
-      font-size:10px;
+      font-size:18px;
       letter-spacing:0.08em;
       text-transform:uppercase;
       color:#4a9eff;
@@ -325,32 +325,28 @@ function loadYearConsensus(year) {
  * Results are cached in state.data.categories. Also updates the topic notice with data quality info.
  */
 function loadTopicConsensus(year, topic) {
-  if (!state.data.categories.has(topic)) state.data.categories.set(topic, new Map());
+  if (!state.data.categories.has(topic)) {
+    state.data.categories.set(topic, new Map());
+  }
+
   if (state.data.categories.get(topic).has(year)) return;
 
   const m = new Map();
+
   for (const r of query(
     "SELECT ms_code, consensus FROM mat_consensus_by_category WHERE year = ? AND category_name = ?",
     [year, topic]
   )) {
     m.set(r.ms_code, r.consensus);
   }
+
   state.data.categories.get(topic).set(year, m);
 
-  // Update topic notice
+  // Simple topic banner
   const notice = document.getElementById("topic-notice");
-  const nRes   = state.data.resByCat.get(`${year}__${topic}`) ?? 0;
 
-  if (m.size === 0) {
-    notice.textContent   = "No data for " + topic + " in " + year;
-    notice.style.color   = "#e67e22";
-  } else if (nRes < 5) {
-    notice.textContent   = `⚠ Limited data — ${nRes} resolution${nRes !== 1 ? "s" : ""} · ${topic}`;
-    notice.style.color   = "#e67e22";
-  } else {
-    notice.textContent   = "Showing: " + topic;
-    notice.style.color   = "#4a9eff";
-  }
+  notice.textContent = "Showing: " + topic;
+  notice.style.color = "#4a9eff";
   notice.style.display = "block";
 }
 
@@ -360,19 +356,38 @@ function loadTopicConsensus(year, topic) {
  * Results are cached in state.data.similarity under the key "year__ms_code".
  */
 function loadSimilarity(year, selectedCode) {
-  const key = `${year}__${selectedCode}`;
+  const key = `${year}__${state.topic}__${selectedCode}`;
   if (state.data.similarity.has(key)) return;
+
   const m = new Map();
-  for (const r of query(`
-    SELECT
-      CASE WHEN ms_code1 = ? THEN ms_code2 ELSE ms_code1 END AS other_code,
-      agreement
-    FROM agreement_overall
-    WHERE year = ? AND (ms_code1 = ? OR ms_code2 = ?)`,
-    [selectedCode, year, selectedCode, selectedCode]
-  )) {
-    m.set(r.other_code, r.agreement);
+
+  if (state.topic === "all") {
+    for (const r of query(`
+      SELECT
+        CASE WHEN ms_code1 = ? THEN ms_code2 ELSE ms_code1 END AS other_code,
+        agreement
+      FROM agreement_overall
+      WHERE year = ? AND (ms_code1 = ? OR ms_code2 = ?)`,
+      [selectedCode, year, selectedCode, selectedCode]
+    )) {
+      m.set(r.other_code, r.agreement);
+    }
+  } else {
+    for (const r of query(`
+      SELECT
+        CASE WHEN a.ms_code1 = ? THEN a.ms_code2 ELSE a.ms_code1 END AS other_code,
+        a.agreement
+      FROM agreement_by_category a
+      JOIN categories c ON a.category_id = c.category_id
+      WHERE a.year = ?
+        AND c.category_name = ?
+        AND (a.ms_code1 = ? OR a.ms_code2 = ?)`,
+      [selectedCode, year, state.topic, selectedCode, selectedCode]
+    )) {
+      m.set(r.other_code, r.agreement);
+    }
   }
+
   state.data.similarity.set(key, m);
 }
 
@@ -389,6 +404,19 @@ function isDataSparse(year, topic) {
  * When a topic is selected, shows counts for that topic in the current year.
  * When showing all topics, shows overall counts for the current year.
  */
+ 
+function updateUIForMetric() {
+  const isIdealPoint = state.metric === "idealpoint";
+
+  d3.select("#topic-control")
+    .style("display", isIdealPoint ? "none" : null);
+
+  d3.select("#stats-control")
+    .style("display", isIdealPoint ? "none" : null);
+
+  d3.select("#topic-notice")
+    .style("display", isIdealPoint ? "none" : null);
+}
 
 function updateStats() {
   if (state.topic !== "all") {
@@ -432,7 +460,7 @@ function updateColors(paths, numToIso) {
 
     if (state.metric === "similarity" && state.selectedCode) {
       if (iso === state.selectedCode) return "#ffffff";
-      const key = `${state.year}__${state.selectedCode}`;
+      const key = `${state.year}__${state.topic}__${state.selectedCode}`;
       const val = state.data.similarity.get(key)?.get(iso);
       return val != null ? colorAgreement(val) : "#1a2a40";
     }
@@ -590,7 +618,7 @@ function initMap(world) {
           ? state.data.categories.get(state.topic)?.get(state.year)?.get(iso) ?? null
           : state.data.agreement.get(state.year)?.get(iso) ?? null;
       } else if (state.metric === "similarity" && state.selectedCode) { // similarity to selected country 
-        agr = state.data.similarity.get(`${state.year}__${state.selectedCode}`)?.get(iso) ?? null;
+        agr = state.data.similarity.get(`${state.year}__${state.topic}__${state.selectedCode}`)?.get(iso) ?? null;
       }
 
       const ip = iso ? state.data.idealpoints.get(state.year)?.get(iso) ?? null : null;
@@ -632,11 +660,14 @@ function initMap(world) {
     state.year = +this.value;
     d3.select("#year-label").text(state.year);
     loadYearConsensus(state.year);
-    if (state.topic !== "all") loadTopicConsensus(state.year, state.topic);
+    if (state.metric !== "idealpoint" && state.topic !== "all") {
+      loadTopicConsensus(state.year, state.topic);
+    }
     if (state.metric === "similarity" && state.selectedCode) loadSimilarity(state.year, state.selectedCode);
     updateColors(paths, numToIso);
     updateHatch(hatchPaths, numToIso);
     updateStats();
+    updateUIForMetric();
   });
 
   d3.select("#metric-select").on("change", function() {
@@ -644,21 +675,29 @@ function initMap(world) {
     if (state.metric === "similarity" && state.selectedCode) {
       loadSimilarity(state.year, state.selectedCode);
     }
+    updateUIForMetric();
     updateColors(paths, numToIso);
     updateHatch(hatchPaths, numToIso);
+    updateStats();
   });
 
   d3.select("#topic-select").on("change", function() {
     state.topic = this.value;
     const notice = document.getElementById("topic-notice");
     if (state.topic === "all") {
-      notice.style.display = "none";
+      notice.textContent = "Showing: All topics";
+      notice.style.color = "#4a9eff";
+      notice.style.display = "block";
     } else {
       loadTopicConsensus(state.year, state.topic);
+    }
+    if (state.metric === "similarity" && state.selectedCode) {
+      loadSimilarity(state.year, state.selectedCode);
     }
     updateColors(paths, numToIso);
     updateHatch(hatchPaths, numToIso);
     updateStats();
+    updateUIForMetric();
   });
 
   window.addEventListener("resize", () => {
@@ -737,6 +776,8 @@ function buildNumericToIsoMap() {
     document.getElementById("loading-text").textContent = "Error loading data";
     document.getElementById("loading-progress").textContent = err.message;
   }
+  
+    updateUIForMetric();
 })();
 </script>
 </body>
