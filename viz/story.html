@@ -491,7 +491,7 @@ function renderDotPlot(code, svgId) {
   const allCons = query("SELECT ms_code, AVG(consensus) as avg FROM mat_consensus_overall GROUP BY ms_code ORDER BY avg");
   if (!cons || !allCons.length) return;
 
-  const activeBlocs  = new Set(["EU", "NATO", "BRICS", "PfP", "Non-Aligned", "Other"]);
+  const activeBlocs = new Set(["EU","NATO","BRICS","PfP","OIC","African Group","CELAC","ASEAN","Other"]);
   const countryBlocs = new Map();
   for (const [bloc, codes] of Object.entries(BLOCS)) {
     codes.forEach(c => {
@@ -500,9 +500,17 @@ function renderDotPlot(code, svgId) {
     });
   }
   const blocColor = {
-    "EU":"#1a3a6e","NATO":"#2980b9","BRICS":"#e67e22",
-    "PfP":"#1e8449","Non-Aligned":"#27ae60","Other":"#c8c4bc",
+    "EU":           "#1a3a6e",
+    "NATO":         "#2980b9",
+    "BRICS":        "#e67e22",
+    "PfP":          "#1e8449",
+    "OIC":          "#8e44ad",
+    "African Group":"#c0392b",
+    "CELAC":        "#d4ac0d",
+    "ASEAN":        "#17a589",
+    "Other":        "#c8c4bc",
   };
+  const blocPriority = ["EU","NATO","BRICS","PfP","OIC","African Group","CELAC","ASEAN"];
   const dotTooltip = document.getElementById("dot-tooltip");
   const svgEl = document.getElementById(svgId);
   if (!svgEl) return;
@@ -533,7 +541,11 @@ function renderDotPlot(code, svgId) {
     .attr("cx", d => x(d.avg)).attr("cy",30).attr("r",5.5)
     .attr("fill", d => {
       const b = countryBlocs.get(d.ms_code);
-      return b?.length ? blocColor[b[0]] ?? blocColor["Other"] : blocColor["Other"];
+      if (!b?.length) return blocColor["Other"];
+      for (const bloc of blocPriority) {
+        if (b.includes(bloc)) return blocColor[bloc];
+      }
+      return blocColor["Other"];
     })
     .attr("opacity", 0.75)
     .attr("data-blocs", d => {
@@ -566,10 +578,15 @@ function renderDotPlot(code, svgId) {
     .text("High agreement");
 
   function updateDots() {
-    dots.attr("opacity", function() {
-      const blocs = (this.getAttribute("data-blocs") ?? "Other").split(",");
-      return blocs.some(b => activeBlocs.has(b)) ? 0.75 : 0;
-    });
+    dots
+      .attr("opacity", function() {
+        const blocs = (this.getAttribute("data-blocs") ?? "Other").split(",");
+        return blocs.some(b => activeBlocs.has(b)) ? 0.75 : 0;
+      })
+      .style("pointer-events", function() {
+        const blocs = (this.getAttribute("data-blocs") ?? "Other").split(",");
+        return blocs.some(b => activeBlocs.has(b)) ? "auto" : "none";
+      });
   }
 
   const legend = document.getElementById(legendId);
@@ -973,16 +990,14 @@ function renderArcChart(code, svgId) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildChapter6(code, suffix) {
-  const country     = query("SELECT country_name FROM countries WHERE ms_code = ?", [code])[0];
-  const NON_ALIGNED = ["IND","EGY","IDN","GHA","MLI","SEN","TZA","ZMB","CUB","AGO"];
-  const allBlocs    = { ...BLOCS, "Non-Aligned": NON_ALIGNED };
+  const country = query("SELECT country_name FROM countries WHERE ms_code = ?", [code])[0];
 
   const memberBlocs = Object.entries(BLOCS)
     .filter(([, codes]) => codes.includes(code))
     .map(([name]) => name);
 
   const blocScores = {};
-  for (const [bloc, codes] of Object.entries(allBlocs)) {
+  for (const [bloc, codes] of Object.entries(BLOCS)) {
     const members = codes.filter(c => c !== code);
     if (!members.length) continue;
     const placeholders = members.map(() => "?").join(",");
@@ -1030,14 +1045,21 @@ function buildChapter6(code, suffix) {
       <span class="hl">${(memberScore*100).toFixed(1)}%</span>.`;
   }
 
-  const blocColors = {
-    "EU":"#1a3a6e","NATO":"#2980b9","BRICS":"#e67e22",
-    "PfP":"#1e8449","Non-Aligned":"#27ae60",
+  const blocColor = {
+    "EU":           "#1a3a6e",
+    "NATO":         "#2980b9",
+    "BRICS":        "#e67e22",
+    "PfP":          "#1e8449",
+    "OIC":          "#8e44ad",
+    "African Group":"#c0392b",
+    "CELAC":        "#d4ac0d",
+    "ASEAN":        "#17a589",
+    "Other":        "#c8c4bc",
   };
 
   const barsHtml = sorted.map(([bloc, score]) => {
     const isMember = memberBlocs.includes(bloc);
-    const color    = blocColors[bloc] ?? "#9898b0";
+    const color    = blocColor[bloc] ?? "#9898b0";
     const barW     = Math.max(0, ((score - 0.4) / 0.6 * 100)).toFixed(1);
     return `
       <div class="bloc-bar-row">
