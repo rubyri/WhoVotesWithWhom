@@ -8,7 +8,6 @@ Expected files:
   - 2026_02_06_ga_voting.csv
   - dataverse_files/Idealpointestimates1946-2025.csv
 
-  Generated with Sonnet 4.6
 """
 
 import pandas as pd

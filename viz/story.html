@@ -268,7 +268,7 @@
     <a class="nav-tab" href="map.html">World Map</a>
     <button class="nav-tab">Network</button>
     <button class="nav-tab">Timeline</button>
-    <button class="nav-tab">Compare</button>
+    <button class="nav-tab" onclick="window.location.href='compare.html?a='+(new URLSearchParams(location.search).get('code')||'')">Compare</button>
     <button class="nav-tab active" id="country-tab">—</button>
   </div>
 </nav>
