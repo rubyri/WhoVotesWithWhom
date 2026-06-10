@@ -268,7 +268,7 @@
     <a class="nav-tab" href="map.html">World Map</a>
     <button class="nav-tab">Network</button>
     <button class="nav-tab">Timeline</button>
-    <button class="nav-tab" onclick="window.location.href='compare.html?a='+(new URLSearchParams(location.search).get('code')||'')">Compare</button>
+    <button class="nav-tab">Compare</button>
     <button class="nav-tab active" id="country-tab">—</button>
   </div>
 </nav>
@@ -297,7 +297,7 @@
 
 <script type="module">
 import {
-  DATA_PATHS, BLOCS, colorScale,
+  DATA_PATHS, BLOCS, BLOC_COLORS, BLOC_LABELS, DEFUNCT, colorScale,
   DB, loadDatabase, query,
   getCountryName, getIso2, flagImg, ordinal, blocBadges,
   renderDNA,
@@ -316,18 +316,17 @@ const votesCache = new Map(); // code -> allVotes array
 
 async function getVotes(code) {
   if (votesCache.has(code)) return votesCache.get(code);
-  const raw    = await d3.csv(DATA_PATHS.unclean);
-  const filtered = raw.filter(r => r.ms_code === code);
-  votesCache.set(code, filtered);
-  // Also cache all codes found in this CSV load to avoid re-fetching
-  // (we loaded all rows anyway)
+  const raw = await d3.csv(DATA_PATHS.unclean);
+  // Cache all rows under __all__ for co-voter lookups
+  votesCache.set("__all__", raw);
+  // Cache per-country
   const byCode = new Map();
   raw.forEach(r => {
     if (!byCode.has(r.ms_code)) byCode.set(r.ms_code, []);
     byCode.get(r.ms_code).push(r);
   });
-  byCode.forEach((v, k) => { if (!votesCache.has(k)) votesCache.set(k, v); });
-  return filtered;
+  byCode.forEach((v, k) => votesCache.set(k, v));
+  return votesCache.get(code) ?? [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -370,7 +369,6 @@ async function renderCompare(code) {
         observer.disconnect();
         renderDNA(code, "dna-svg-right");
         renderDotPlot(code, "dotplot-svg-right");
-        renderArcChart(code, "radial-arc-svg-right");
         renderIdealpointChart(code, "idealpoint-svg-right");
       }
     }
@@ -433,10 +431,31 @@ function buildChapter1(code, votes, suffix) {
   const yearsClause = yearsActive && yearsActive < 20
     ? ` during its <span class="hl">${yearsActive} years</span> of membership` : "";
 
-  const yesVotes  = votes.filter(r => r.ms_vote === "Y").length;
-  const yesPct    = totalVotes ? ((yesVotes / totalVotes) * 100).toFixed(1) : "—";
-  const partPct   = partRate  ? (partRate * 100).toFixed(1) : "—";
-  const globalPct = (globalAvg * 100).toFixed(1);
+  // Vote breakdown
+  const yesVotes = votes.filter(r => r.ms_vote === "Y").length;
+  const absVotes = votes.filter(r => r.ms_vote === "A").length;
+  const yesPct   = totalVotes ? ((yesVotes / totalVotes) * 100).toFixed(1) : "—";
+  const absPct   = totalVotes ? ((absVotes / totalVotes) * 100).toFixed(1) : "—";
+  const partPct  = partRate  ? (partRate * 100).toFixed(1) : "—";
+
+  const absRaw   = totalVotes ? (absVotes / totalVotes) * 100 : 0;
+  const absLabel = absRaw >= 30  ? "notably cautious — abstaining on nearly 1 in 3 votes"
+                 : absRaw >  25  ? "notably cautious — abstaining on more than 1 in 4 votes"
+                 : absRaw === 25 ? "notably cautious — abstaining on exactly 1 in 4 votes"
+                 : absRaw >= 15  ? "moderately cautious, abstaining frequently"
+                 : absRaw >= 8   ? "selective in its abstentions"
+                 :                 "rarely abstaining";
+
+  const yesAllRows = query(
+    "SELECT ms_code, AVG(consensus) as avg FROM mat_consensus_overall GROUP BY ms_code ORDER BY avg"
+  );
+  const yesRank   = yesAllRows.findIndex(r => r.ms_code === code) + 1;
+  const yesPctile = Math.round((yesRank / yesAllRows.length) * 100);
+  const yesLabel  = yesPctile >= 90 ? `making it <span class="hl-green">one of the most supportive voices</span> in the assembly`
+                  : yesPctile >= 75 ? `making it <span class="hl-green">a broadly supportive voice</span> in the assembly`
+                  : yesPctile >= 50 ? `placing it <span class="hl">around the global median</span>`
+                  : yesPctile >= 30 ? `making it <span class="hl">a selective voter</span>`
+                  : `making it <span class="hl-red">one of the less agreeable voices</span> in the assembly`;
 
   const insight = `
     ${flagImg(country.iso2, country.country_name, 36, 27)}
@@ -444,11 +463,12 @@ function buildChapter1(code, votes, suffix) {
       Since joining the UN in <span class="hl">${country.first_year}</span>,
       <span class="hl">${country.country_name}</span> has been ${partLabel}
       in the General Assembly — participating in
-      <span class="hl">${partPct}%</span> of votes${yearsClause},
-      compared to a global average of <span class="hl">${globalPct}%</span>.
+      <span class="hl">${partPct}%</span> of votes${yearsClause}.
       Of the <span class="hl">${totalVotes.toLocaleString()}</span> resolutions
       it has weighed in on, it cast a <span class="hl-green">Yes</span> vote
-      <span class="hl">${yesPct}%</span> of the time.
+      <span class="hl">${yesPct}%</span> of the time — ${yesLabel}.
+      It is also <span class="hl">${absLabel}</span>
+      (<span class="hl">${absPct}%</span> abstention rate).
     </span>`;
 
   return makeChapter(1, insight,
@@ -467,18 +487,25 @@ function buildChapter2(code, suffix) {
   const pctBelow = Math.round((rank / allCons.length) * 100);
   const country  = query("SELECT country_name FROM countries WHERE ms_code = ?", [code])[0];
 
-  const euCodes = BLOCS.EU.map(c => `'${c}'`).join(",");
-  const euAvg   = query(`SELECT ROUND(AVG(consensus),4) as avg FROM mat_consensus_overall WHERE ms_code IN (${euCodes})`)[0].avg;
+  const isEUMember   = BLOCS.EU.includes(code);
+  const euCodes      = BLOCS.EU.map(c => `'${c}'`).join(",");
+  const compareAvg   = isEUMember
+    ? query(`SELECT ROUND(AVG(consensus),4) as avg FROM mat_consensus_overall WHERE ms_code IN (${euCodes})`)[0].avg
+    : query("SELECT ROUND(AVG(avg),4) as avg FROM (SELECT ms_code, AVG(consensus) as avg FROM mat_consensus_overall GROUP BY ms_code)")[0].avg;
+  const compareLabel = isEUMember ? "EU" : "global";
+  const direction    = cons > compareAvg ? "above" : "below";
+  const diff         = Math.abs(((cons - compareAvg) * 100)).toFixed(1);
+  const hlClass      = cons > compareAvg ? "hl-green" : "hl-red";
 
-  const direction = cons > euAvg ? "above" : "below";
-  const diff      = Math.abs(((cons - euAvg) * 100)).toFixed(1);
-  const hlClass   = cons > euAvg ? "hl-green" : "hl-red";
+  const alignedPhrase = pctBelow >= 50
+    ? `more aligned than <span class="hl">${pctBelow}%</span> of all member states`
+    : `less aligned than <span class="hl">${100 - pctBelow}%</span> of all member states`;
 
   const insight = `
     Overall, <span class="hl">${country.country_name}</span> agrees with the majority vote
     <span class="hl">${(cons * 100).toFixed(1)}%</span> of the time —
-    more aligned than <span class="hl">${pctBelow}%</span> of all member states.
-    That is <span class="${hlClass}">${diff} points ${direction}</span> the EU average.`;
+    ${alignedPhrase}.
+    That is <span class="${hlClass}">${diff} points ${direction}</span> the ${compareLabel} average.`;
 
   return { html: makeChapter(2, insight,
     `<svg id="dotplot-svg${suffix}"></svg>`,
@@ -491,7 +518,7 @@ function renderDotPlot(code, svgId) {
   const allCons = query("SELECT ms_code, AVG(consensus) as avg FROM mat_consensus_overall GROUP BY ms_code ORDER BY avg");
   if (!cons || !allCons.length) return;
 
-  const activeBlocs = new Set(["EU","NATO","BRICS","PfP","OIC","African Group","CELAC","ASEAN","Other"]);
+  const activeBlocs  = new Set(Object.keys(BLOC_COLORS));
   const countryBlocs = new Map();
   for (const [bloc, codes] of Object.entries(BLOCS)) {
     codes.forEach(c => {
@@ -499,27 +526,16 @@ function renderDotPlot(code, svgId) {
       countryBlocs.get(c).push(bloc);
     });
   }
-  const blocColor = {
-    "EU":           "#1a3a6e",
-    "NATO":         "#2980b9",
-    "BRICS":        "#e67e22",
-    "PfP":          "#1e8449",
-    "OIC":          "#8e44ad",
-    "African Group":"#c0392b",
-    "CELAC":        "#d4ac0d",
-    "ASEAN":        "#17a589",
-    "Other":        "#c8c4bc",
-  };
   const blocPriority = ["EU","NATO","BRICS","PfP","OIC","African Group","CELAC","ASEAN"];
-  const dotTooltip = document.getElementById("dot-tooltip");
-  const svgEl = document.getElementById(svgId);
+  const dotTooltip   = document.getElementById("dot-tooltip");
+  const svgEl        = document.getElementById(svgId);
   if (!svgEl) return;
 
   const container = svgEl.parentNode;
   const legendId  = `legend-${svgId}`;
   container.innerHTML = `
     <svg id="${svgId}" style="width:100%;height:80px;display:block;"></svg>
-    <div id="${legendId}" style="display:flex;gap:14px;margin-top:10px;flex-wrap:wrap;"></div>`;
+    <div id="${legendId}" style="display:flex;gap:14px;margin-top:10px;flex-wrap:wrap;align-items:center;"></div>`;
 
   const svgNode = document.getElementById(svgId);
   if (!svgNode) return;
@@ -541,13 +557,13 @@ function renderDotPlot(code, svgId) {
     .attr("cx", d => x(d.avg)).attr("cy",30).attr("r",5.5)
     .attr("fill", d => {
       const b = countryBlocs.get(d.ms_code);
-      if (!b?.length) return blocColor["Other"];
+      if (!b?.length) return BLOC_COLORS["Other"];
       for (const bloc of blocPriority) {
-        if (b.includes(bloc)) return blocColor[bloc];
+        if (b.includes(bloc)) return BLOC_COLORS[bloc];
       }
-      return blocColor["Other"];
+      return BLOC_COLORS["Other"];
     })
-    .attr("opacity", 0.75)
+    .attr("opacity", 0.85)
     .attr("data-blocs", d => {
       const b = countryBlocs.get(d.ms_code);
       return b?.length ? b.join(",") : "Other";
@@ -568,20 +584,20 @@ function renderDotPlot(code, svgId) {
   svg.append("circle").attr("cx",myX).attr("cy",30).attr("r",6)
     .attr("fill","#1a1a2e").attr("stroke","#fff").attr("stroke-width",2);
   svg.append("text").attr("x",myX).attr("y",6).attr("text-anchor","middle")
-    .attr("font-size","9").attr("fill","#1a1a2e").attr("font-family","Outfit,sans-serif")
+    .attr("font-size","10").attr("fill","#1a1a2e").attr("font-family","Outfit,sans-serif")
     .attr("font-weight","600").text(code);
 
-  svg.append("text").attr("x",20).attr("y",68).attr("font-size","9").attr("fill","#9898b0")
+  svg.append("text").attr("x",20).attr("y",68).attr("font-size","10").attr("fill","#9898b0")
     .attr("font-family","Outfit,sans-serif").text("Low agreement");
   svg.append("text").attr("x",w-20).attr("y",68).attr("text-anchor","end")
-    .attr("font-size","9").attr("fill","#9898b0").attr("font-family","Outfit,sans-serif")
+    .attr("font-size","10").attr("fill","#9898b0").attr("font-family","Outfit,sans-serif")
     .text("High agreement");
 
   function updateDots() {
     dots
       .attr("opacity", function() {
         const blocs = (this.getAttribute("data-blocs") ?? "Other").split(",");
-        return blocs.some(b => activeBlocs.has(b)) ? 0.75 : 0;
+        return blocs.some(b => activeBlocs.has(b)) ? 0.85 : 0;
       })
       .style("pointer-events", function() {
         const blocs = (this.getAttribute("data-blocs") ?? "Other").split(",");
@@ -589,17 +605,56 @@ function renderDotPlot(code, svgId) {
       });
   }
 
+  // ── Colorblind-safe alternative palette (Okabe-Ito) ──────────────────────
+  const CB_COLORS = {
+    "EU":           "#0072B2",
+    "NATO":         "#56B4E9",
+    "BRICS":        "#E69F00",
+    "PfP":          "#009E73",
+    "OIC":          "#CC79A7",
+    "African Group":"#D55E00",
+    "CELAC":        "#F0E442",
+    "ASEAN":        "#000000",
+    "Other":        "#BBBBBB",
+  };
+
+  let cbMode = false;
+
+  function currentColors() { return cbMode ? CB_COLORS : BLOC_COLORS; }
+
+  function applyColors() {
+    const colors = currentColors();
+    // Update dots
+    dots.attr("fill", d => {
+      const b = countryBlocs.get(d.ms_code);
+      if (!b?.length) return colors["Other"];
+      for (const bloc of blocPriority) {
+        if (b.includes(bloc)) return colors[bloc] ?? colors["Other"];
+      }
+      return colors["Other"];
+    });
+    // Update legend dots
+    Object.keys(colors).forEach(key => {
+      const el = document.getElementById(`ld-${svgId}-${key}`);
+      if (el) el.style.background = colors[key];
+    });
+  }
+
   const legend = document.getElementById(legendId);
-  Object.entries(blocColor).forEach(([key, color]) => {
+  Object.entries(BLOC_COLORS).forEach(([key, color]) => {
+    const fullName    = BLOC_LABELS[key] ?? key;
+    const memberCount = BLOCS[key]?.length ?? null;
+    const titleText   = memberCount ? `${fullName} · ${memberCount} members` : fullName;
+    const dotId       = `ld-${svgId}-${key}`;
+    const labelId     = `ll-${svgId}-${key}`;
     const btn = document.createElement("button");
-    btn.style.cssText = `display:inline-flex;align-items:center;gap:6px;background:none;
+    btn.title     = titleText;
+    btn.style.cssText = `display:inline-flex;align-items:center;gap:5px;background:none;
       border:none;cursor:pointer;font-family:'Outfit',sans-serif;font-size:10px;
       color:#5a5a7a;padding:2px 0;`;
-    const dotId   = `ld-${svgId}-${key}`;
-    const labelId = `ll-${svgId}-${key}`;
     btn.innerHTML = `
       <span id="${dotId}" style="width:10px;height:10px;border-radius:50%;
-        background:${color};display:inline-block;transition:opacity 0.15s;"></span>
+        background:${color};display:inline-block;transition:background 0.2s,opacity 0.15s;"></span>
       <span id="${labelId}">${key}</span>`;
     btn.addEventListener("click", () => {
       if (activeBlocs.has(key)) {
@@ -615,32 +670,50 @@ function renderDotPlot(code, svgId) {
     });
     legend.appendChild(btn);
   });
+
+  // Eye icon — colorblind toggle
+  const eyeBtn = document.createElement("button");
+  eyeBtn.id    = `cb-toggle-${svgId}`;
+  eyeBtn.title = "Toggle colorblind-safe palette (Okabe-Ito)";
+  eyeBtn.style.cssText = `display:inline-flex;align-items:center;gap:4px;background:none;
+    border:1px solid #c8c4bc;border-radius:4px;cursor:pointer;
+    font-family:'Outfit',sans-serif;font-size:9px;letter-spacing:0.06em;
+    color:#9898b0;padding:2px 7px;margin-left:6px;transition:all 0.15s;`;
+  eyeBtn.innerHTML = `👁 CB`;
+  eyeBtn.addEventListener("click", () => {
+    cbMode = !cbMode;
+    eyeBtn.style.background   = cbMode ? "#1a1a2e" : "none";
+    eyeBtn.style.color        = cbMode ? "#e8eef8" : "#9898b0";
+    eyeBtn.style.borderColor  = cbMode ? "#1a1a2e" : "#c8c4bc";
+    applyColors();
+  });
+  legend.appendChild(eyeBtn);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Chapter 3 — Long-term partners
+//  Chapter 3a — Closest long-term partners
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildChapter3(code, suffix) {
+function buildChapter3a(code, suffix) {
   const membershipYears = query(
     "SELECT years_active FROM country_participation WHERE ms_code = ?", [code]
   )[0]?.years_active ?? 70;
   const threshold = Math.max(10, Math.round(membershipYears * 0.3));
   const country   = query("SELECT country_name FROM countries WHERE ms_code = ?", [code])[0];
 
-  const rows = query(`
+  const closest = query(`
     SELECT CASE WHEN ms_code1 = ? THEN ms_code2 ELSE ms_code1 END AS other_code,
            ROUND(AVG(agreement), 4) AS avg_agr, COUNT(DISTINCT year) AS n_years
     FROM agreement_overall WHERE (ms_code1 = ? OR ms_code2 = ?)
     GROUP BY other_code HAVING n_years >= ${threshold} ORDER BY avg_agr DESC LIMIT 5
   `, [code, code, code]);
 
-  if (!rows.length) return null;
+  if (!closest.length) return null;
 
-  const top     = rows[0];
+  const top     = closest[0];
   const topName = getCountryName(top.other_code);
-  const listId  = `ch3-list${suffix}`;
-  const btnId   = `ch3-more${suffix}`;
+  const listId  = `ch3a-list${suffix}`;
+  const btnId   = `ch3a-more${suffix}`;
 
   const insight = `
     <span class="hl">${country.country_name}</span>'s most enduring voting partner is
@@ -671,18 +744,66 @@ function buildChapter3(code, suffix) {
     </span>`;
 
   const visual = `
-    <div id="${listId}">${rows.map((r,i) => rowHtml(r,i)).join("")}</div>
+    <div id="${listId}">${closest.map((r,i) => rowHtml(r,i)).join("")}</div>
     <button class="show-more-btn" id="${btnId}">Show more</button>`;
 
   return { html: makeChapter(3, insight, visual, labelHtml, suffix), threshold };
 }
 
-function initShowMore(code, listId, btnId, votes) {
-  const btn = document.getElementById(btnId);
-  if (!btn) return;
+// ─────────────────────────────────────────────────────────────────────────────
+//  Chapter 3b — Most distant long-term partners
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildChapter3b(code, suffix, threshold) {
+  const country = query("SELECT country_name FROM countries WHERE ms_code = ?", [code])[0];
+
+  const distant = query(`
+    SELECT CASE WHEN ms_code1 = ? THEN ms_code2 ELSE ms_code1 END AS other_code,
+           ROUND(AVG(agreement), 4) AS avg_agr, COUNT(DISTINCT year) AS n_years
+    FROM agreement_overall WHERE (ms_code1 = ? OR ms_code2 = ?)
+    GROUP BY other_code HAVING n_years >= ${threshold} ORDER BY avg_agr ASC LIMIT 5
+  `, [code, code, code]);
+
+  if (!distant.length) return null;
+
+  const bot     = distant[0];
+  const botName = getCountryName(bot.other_code);
+  const distId  = `ch3b-list${suffix}`;
+  const distBtnId = `ch3b-more${suffix}`;
+
+  const insight = `
+    <span class="hl">${country.country_name}</span> also has a long-running divergence with
+    <span class="country-link" onclick="window.openCompare('${bot.other_code}')">
+      <span class="hl-red">${botName}</span></span> — ${bot.n_years} years of shared votes,
+    agreeing only <span class="hl-red">${(bot.avg_agr * 100).toFixed(1)}%</span> of the time.`;
+
+  function rowHtml(r, i) {
+    const name = getCountryName(r.other_code);
+    const iso2 = getIso2(r.other_code);
+    return `
+      <div class="partner-row-link" onclick="window.openCompare('${r.other_code}')">
+        <div class="partner-rank">${i+1}</div>
+        ${flagImg(iso2, name, 20, 15)}
+        <div class="partner-name">${name}</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">${blocBadges(r.other_code)}</div>
+        <div class="partner-meta" style="margin-left:auto;">${r.n_years} yrs</div>
+        <div class="partner-score-strong distant">${(r.avg_agr*100).toFixed(1)}%</div>
+      </div>`;
+  }
+
+  const visual = `
+    <div id="${distId}">${distant.map((r,i) => rowHtml(r,i)).join("")}</div>
+    <button class="show-more-btn" id="${distBtnId}">Show more</button>`;
+
+  return { html: makeChapter(4, insight, visual, `Most distant partnerships · min ${threshold} years`, suffix) };
+}
+
+function initShowMore(code, listId, btnId, suffix, order = "DESC") {
   const threshold = Math.max(10, Math.round(
     (query("SELECT years_active FROM country_participation WHERE ms_code = ?", [code])[0]?.years_active ?? 70) * 0.3
   ));
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
   let offset = 5, showing = 5;
 
   btn.addEventListener("click", () => {
@@ -698,11 +819,12 @@ function initShowMore(code, listId, btnId, votes) {
       SELECT CASE WHEN ms_code1 = ? THEN ms_code2 ELSE ms_code1 END AS other_code,
              ROUND(AVG(agreement), 4) AS avg_agr, COUNT(DISTINCT year) AS n_years
       FROM agreement_overall WHERE (ms_code1 = ? OR ms_code2 = ?)
-      GROUP BY other_code HAVING n_years >= ${threshold} ORDER BY avg_agr DESC
+      GROUP BY other_code HAVING n_years >= ${threshold} ORDER BY avg_agr ${order}
       LIMIT 10 OFFSET ?
     `, [code, code, code, offset]);
 
     const list = document.getElementById(listId);
+    const type = order === "DESC" ? "close" : "distant";
     more.forEach((r, i) => {
       const name = getCountryName(r.other_code);
       const iso2 = getIso2(r.other_code);
@@ -715,7 +837,7 @@ function initShowMore(code, listId, btnId, votes) {
         <div class="partner-name">${name}</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;">${blocBadges(r.other_code)}</div>
         <div class="partner-meta" style="margin-left:auto;">${r.n_years} yrs</div>
-        <div class="partner-score-strong close">${(r.avg_agr*100).toFixed(1)}%</div>`;
+        <div class="partner-score-strong ${type}">${(r.avg_agr*100).toFixed(1)}%</div>`;
       list.appendChild(div);
     });
     offset  += more.length;
@@ -805,70 +927,106 @@ function buildChapter4(code, suffix) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Chapter 5 — Topic breakdown + arc chart
+//  Chapter 5 — Topic breakdown (stacked bars)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildChapter5(code, suffix) {
+function buildChapter5(code, votes, suffix) {
   const country = query("SELECT country_name FROM countries WHERE ms_code = ?", [code])[0];
-  const myTopics = query(`
-    SELECT category_name, ROUND(AVG(consensus),4) AS avg
-    FROM mat_consensus_by_category WHERE ms_code = ?
-    GROUP BY category_name ORDER BY avg DESC
-  `, [code]);
 
   const globalMedians = query(`
     SELECT category_name, ROUND(AVG(consensus),4) AS global_avg
     FROM mat_consensus_by_category GROUP BY category_name
   `);
-
   const medianMap = new Map(globalMedians.map(r => [r.category_name, r.global_avg]));
-  const rows = myTopics.map(r => ({
-    ...r,
-    delta: r.avg - (medianMap.get(r.category_name) ?? 0.7),
-  })).sort((a,b) => b.delta - a.delta);
+
+  const topicVotes = {};
+  votes.forEach(r => {
+    const cat = r.subject_category;
+    if (!cat || cat === "Uncategorized" || cat === "Other") return;
+    if (!topicVotes[cat]) topicVotes[cat] = { Y:0, N:0, A:0, total:0 };
+    if (r.ms_vote === "Y") topicVotes[cat].Y++;
+    else if (r.ms_vote === "N") topicVotes[cat].N++;
+    else if (r.ms_vote === "A") topicVotes[cat].A++;
+    topicVotes[cat].total++;
+  });
+
+  const rows = Object.entries(topicVotes)
+    .filter(([, v]) => v.total >= 5)
+    .map(([cat, v]) => ({
+      category_name: cat,
+      yesPct: v.Y / v.total,
+      noPct:  v.N / v.total,
+      absPct: v.A / v.total,
+      total:  v.total,
+      delta:  (v.Y / v.total) - (medianMap.get(cat) ?? 0.7),
+    }))
+    .sort((a,b) => b.yesPct - a.yesPct);
 
   if (!rows.length) return null;
 
-  const best       = rows[0];
-  const worst      = rows[rows.length - 1];
-  const bestAbove  = best.delta > 0;
-  const worstBelow = worst.delta < 0;
+  const best     = rows[0];
+  const worst    = rows[rows.length - 1];
+  const allBelow = rows.every(r => r.delta < 0);
 
-  const insight = `
-    <span class="hl">${country.country_name}</span> aligns most strongly with the global consensus on
-    <span class="hl">${best.category_name}</span>
-    (<span class="${bestAbove ? 'hl-green' : 'hl-red'}">${bestAbove ? '+' : ''}${(best.delta*100).toFixed(1)} pts
-    ${bestAbove ? 'above' : 'below'} average</span>),
-    but diverges most on <span class="hl">${worst.category_name}</span>
-    (<span class="${worstBelow ? 'hl-red' : 'hl-green'}">${worstBelow ? '' : '+'}${(worst.delta*100).toFixed(1)} pts
-    ${worstBelow ? 'below' : 'above'} average</span>).`;
+  let insight;
+  if (allBelow) {
+    insight = `
+      <span class="hl">${country.country_name}</span> diverges from the global consensus
+      across all topics — coming closest on
+      <span class="hl">${best.category_name}</span>
+      (<span class="hl-red">${(best.delta*100).toFixed(1)} pts</span> below average),
+      and most sharply on
+      <span class="hl">${worst.category_name}</span>
+      (<span class="hl-red">${(worst.delta*100).toFixed(1)} pts</span> below average).`;
+  } else {
+    const bestAbove  = best.delta > 0;
+    const worstBelow = worst.delta < 0;
+    insight = `
+      <span class="hl">${country.country_name}</span> votes Yes most often on
+      <span class="hl">${best.category_name}</span>
+      (<span class="hl-green">${(best.yesPct*100).toFixed(1)}%</span>
+      <span class="${bestAbove ? 'hl-green' : 'hl-red'}">${bestAbove ? '+' : ''}${(best.delta*100).toFixed(1)} pts vs avg</span>),
+      and least often on
+      <span class="hl">${worst.category_name}</span>
+      (<span class="hl-red">${(worst.yesPct*100).toFixed(1)}%</span>
+      <span class="${worstBelow ? 'hl-red' : 'hl-green'}">${worstBelow ? '' : '+'}${(worst.delta*100).toFixed(1)} pts vs avg</span>).`;
+  }
+
+  const YES_COLOR = "#0072B2";   // blue
+  const ABS_COLOR = "#F5E6C8";   // light beige
+  const NO_COLOR  = "#D55E00";   // dark orange
 
   const listHtml = rows.map(r => {
-    const cls      = r.delta > 0.02 ? "above" : r.delta < -0.02 ? "below" : "neutral";
-    const deltaStr = (r.delta >= 0 ? "+" : "") + (r.delta * 100).toFixed(1);
+    const yW = (r.yesPct * 100);
+    const aW = (r.absPct * 100);
+    const nW = (r.noPct  * 100);
+    const dStr = (r.delta >= 0 ? "+" : "") + (r.delta * 100).toFixed(1);
+    const yLabel = yW >= 8 ? `<span style="position:absolute;left:4px;top:50%;transform:translateY(-50%);font-size:8px;color:rgba(255,255,255,0.9);font-family:'Outfit',sans-serif;white-space:nowrap;">${yW.toFixed(0)}%</span>` : "";
+    const aLabel = aW >= 8 ? `<span style="position:absolute;left:4px;top:50%;transform:translateY(-50%);font-size:8px;color:#5a5a7a;font-family:'Outfit',sans-serif;white-space:nowrap;">${aW.toFixed(0)}%</span>` : "";
+    const nLabel = nW >= 8 ? `<span style="position:absolute;left:4px;top:50%;transform:translateY(-50%);font-size:8px;color:rgba(255,255,255,0.9);font-family:'Outfit',sans-serif;white-space:nowrap;">${nW.toFixed(0)}%</span>` : "";
     return `
-      <div class="topic-row">
+      <div class="topic-row" style="margin-bottom:6px;">
         <div class="topic-label">${r.category_name}</div>
-        <div class="topic-bars-wrap">
-          <div class="topic-bar-bg"></div>
-          <div class="topic-bar-fill ${cls}" style="width:${(r.avg*100).toFixed(1)}%"></div>
+        <div class="topic-bars-wrap" style="height:18px;position:relative;border-radius:4px;overflow:hidden;background:#e8e4dc;">
+          <div style="position:absolute;left:0;top:0;height:100%;width:${yW.toFixed(1)}%;background:${YES_COLOR};opacity:0.9;display:flex;align-items:center;">${yLabel}</div>
+          <div style="position:absolute;left:${yW.toFixed(1)}%;top:0;height:100%;width:${aW.toFixed(1)}%;background:${ABS_COLOR};border-left:1px solid #ccc;display:flex;align-items:center;">${aLabel}</div>
+          <div style="position:absolute;left:${(yW+aW).toFixed(1)}%;top:0;height:100%;width:${nW.toFixed(1)}%;background:${NO_COLOR};opacity:0.9;display:flex;align-items:center;">${nLabel}</div>
         </div>
-        <div class="topic-score">${(r.avg*100).toFixed(1)}%</div>
-        <div class="topic-delta ${r.delta >= 0 ? 'pos' : 'neg'}">${deltaStr}</div>
+        <div class="topic-delta ${r.delta >= 0 ? 'pos' : 'neg'}" title="vs global median">${dStr}</div>
       </div>`;
   }).join("");
 
   const visual = `
-    <div style="display:flex;justify-content:flex-end;gap:20px;margin-bottom:10px;
+    <div style="display:flex;justify-content:flex-end;gap:16px;margin-bottom:10px;
       font-size:9px;color:var(--text-3);letter-spacing:0.08em;">
-      <span>Score</span><span style="width:44px;text-align:right;">vs avg</span>
+      <span style="color:${YES_COLOR};">■ Yes</span>
+      <span style="color:#a89060;">■ Abstain</span>
+      <span style="color:${NO_COLOR};">■ No</span>
+      <span style="width:44px;text-align:right;">vs avg</span>
     </div>
-    <div class="topic-list">${listHtml}</div>
-    <div class="radial-chart-wrap">
-      <svg id="radial-arc-svg${suffix}" class="radial-svg"></svg>
-    </div>`;
+    <div class="topic-list">${listHtml}</div>`;
 
-  return { html: makeChapter(5, insight, visual, "Average agreement by topic · delta vs global median", suffix), rows };
+  return { html: makeChapter(5, insight, visual, "Voting breakdown by topic · Yes / Abstain / No", suffix), rows };
 }
 
 function renderArcChart(code, svgId) {
@@ -1018,26 +1176,30 @@ function buildChapter6(code, suffix) {
   const topBloc  = sorted[0][0];
   const topScore = sorted[0][1];
 
+  const formalBlocs  = ["EU","NATO","BRICS","PfP"];
+  const topIsFormal  = formalBlocs.includes(topBloc);
+  const memberFormal = memberBlocs.filter(b => formalBlocs.includes(b));
+
   let insight;
   if (memberBlocs.length === 0) {
     insight = `
-      Without formal bloc membership, <span class="hl">${country.country_name}</span>'s
-      voting behaviour is most consistent with the
-      <span class="hl">${topBloc}</span>
+      Without formal bloc membership, <span class="hl">${country.country_name}</span>
+      votes most similarly to the <span class="hl">${topBloc}</span>
       (<span class="hl">${(topScore*100).toFixed(1)}%</span> average agreement).`;
   } else if (memberBlocs.includes(topBloc)) {
+    const prefix = topIsFormal ? "Consistent with its membership" : "Consistent with its status";
     insight = `
-      Consistent with its membership, <span class="hl">${country.country_name}</span>'s
-      voting behaviour is most consistent with fellow
-      <span class="hl">${topBloc}</span> members
+      ${prefix}, <span class="hl">${country.country_name}</span>
+      votes most similarly to fellow <span class="hl">${topBloc}</span> members
       (<span class="hl">${(topScore*100).toFixed(1)}%</span>).`;
   } else {
     const memberScore = blocScores[memberBlocs[0]];
     const memberRank  = sorted.findIndex(([b]) => b === memberBlocs[0]) + 1;
+    const prefix      = memberFormal.length ? "Despite being a member of" : "Despite its status as a";
     insight = `
-      Despite being a member of <span class="hl">${memberBlocs.join(" and ")}</span>,
-      <span class="hl">${country.country_name}</span>'s voting behaviour is most consistent
-      with the <span class="hl">${topBloc}</span>
+      ${prefix} <span class="hl">${memberBlocs.join(" and ")}</span>${memberFormal.length ? "" : " nation"},
+      <span class="hl">${country.country_name}</span> votes most similarly to
+      the <span class="hl">${topBloc}</span>
       (<span class="hl">${(topScore*100).toFixed(1)}%</span>) —
       a bloc it does not formally belong to.
       Its closest formal alliance ranks
@@ -1045,25 +1207,18 @@ function buildChapter6(code, suffix) {
       <span class="hl">${(memberScore*100).toFixed(1)}%</span>.`;
   }
 
-  const blocColor = {
-    "EU":           "#1a3a6e",
-    "NATO":         "#2980b9",
-    "BRICS":        "#e67e22",
-    "PfP":          "#1e8449",
-    "OIC":          "#8e44ad",
-    "African Group":"#c0392b",
-    "CELAC":        "#d4ac0d",
-    "ASEAN":        "#17a589",
-    "Other":        "#c8c4bc",
-  };
-
   const barsHtml = sorted.map(([bloc, score]) => {
-    const isMember = memberBlocs.includes(bloc);
-    const color    = blocColor[bloc] ?? "#9898b0";
-    const barW     = Math.max(0, ((score - 0.4) / 0.6 * 100)).toFixed(1);
+    const isMember   = memberBlocs.includes(bloc);
+    const color      = BLOC_COLORS[bloc] ?? "#888";
+    const barW       = Math.max(0, ((score - 0.4) / 0.6 * 100)).toFixed(1);
+    const fullName   = BLOC_LABELS[bloc] ?? bloc;
+    const memberCount = BLOCS[bloc]?.length ?? null;
+    const titleText  = memberCount ? `${fullName} · ${memberCount} members` : fullName;
     return `
       <div class="bloc-bar-row">
-        <div class="bloc-bar-label">
+        <div class="bloc-bar-label" title="${titleText}" style="cursor:help;">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;
+            background:${color};flex-shrink:0;"></span>
           ${bloc}
           ${isMember ? `<span class="bloc-member-badge">member</span>` : ""}
         </div>
@@ -1232,9 +1387,16 @@ function buildChapter8(code, votes, suffix) {
     is willing to stand alone.`;
 
   function rowHtml(r) {
+    // Find co-voters from votesCache
+    const allForRes  = (votesCache.get("__all__") ?? []).filter(v =>
+      v.resolution === r.resolution && v.ms_vote === r.ms_vote && v.ms_code !== code
+    );
+    const coVoters   = allForRes.slice(0, 10).map(v => getCountryName(v.ms_code)).join(", ");
+    const coTooltip  = coVoters ? `title="Also voted ${r.ms_vote === 'Y' ? 'Yes' : 'No'}: ${coVoters}${allForRes.length > 10 ? ` (+${allForRes.length - 10} more)` : ''}"` : "";
     return `
-      <div class="minority-row">
+      <div class="minority-row" ${coTooltip} style="${coVoters ? 'cursor:help;' : ''}">
         <div class="minority-title">${r.title ?? r.resolution}</div>
+        ${r.subject_category ? `<div style="font-size:10px;color:var(--text-3);margin:3px 0 4px;letter-spacing:0.04em;">${r.subject_category}</div>` : ""}
         <div class="minority-meta">
           <span>${r.date}</span>
           <span>Voted: <strong>${voteLabel[r.ms_vote]}</strong></span>
@@ -1297,17 +1459,18 @@ function initChapter8ShowMore(allMinority, listId, btnId) {
 function buildStory(code, votes, containerId) {
   const suffix = containerId === "story-left" ? "-left" : "-right";
 
-  const ch1    = buildChapter1(code, votes, suffix);
-  const ch2res = buildChapter2(code, suffix);
-  const ch3res = buildChapter3(code, suffix);
-  const ch4    = buildChapter4(code, suffix);
-  const ch5res = buildChapter5(code, suffix);
-  const ch6    = buildChapter6(code, suffix);
-  const ch7res = buildChapter7(code, suffix);
-  const ch8res = buildChapter8(code, votes, suffix);
+  const ch1     = buildChapter1(code, votes, suffix);
+  const ch2res  = buildChapter2(code, suffix);
+  const ch4     = buildChapter4(code, suffix);
+  const ch3ares = buildChapter3a(code, suffix);
+  const ch3bres = ch3ares ? buildChapter3b(code, suffix, ch3ares.threshold) : null;
+  const ch5res  = buildChapter5(code, votes, suffix);
+  const ch6     = buildChapter6(code, suffix);
+  const ch7res  = buildChapter7(code, suffix);
+  const ch8res  = buildChapter8(code, votes, suffix);
 
   const chapters = [
-    ch1, ch2res?.html, ch3res?.html, ch4,
+    ch1, ch2res?.html, ch4, ch3ares?.html, ch3bres?.html,
     ch5res?.html, ch6, ch7res?.html, ch8res?.html,
   ].filter(Boolean);
 
@@ -1318,7 +1481,8 @@ function buildStory(code, votes, containerId) {
     </div>`;
 
   // Init interactive elements
-  initShowMore(code, `ch3-list${suffix}`, `ch3-more${suffix}`, votes);
+  initShowMore(code, `ch3a-list${suffix}`, `ch3a-more${suffix}`, suffix, "DESC");
+  initShowMore(code, `ch3b-list${suffix}`, `ch3b-more${suffix}`, suffix, "ASC");
   if (ch8res) initChapter8ShowMore(ch8res.allMinority, `ch8-list${suffix}`, `ch8-more${suffix}`);
 
   // Init scroll observer for this container
@@ -1373,7 +1537,6 @@ window.openCompare = openCompare;
             obs.disconnect();
             renderDNA(PRIMARY, "dna-svg-left");
             renderDotPlot(PRIMARY, "dotplot-svg-left");
-            renderArcChart(PRIMARY, "radial-arc-svg-left");
             renderIdealpointChart(PRIMARY, "idealpoint-svg-left");
           }
         }

@@ -35,16 +35,57 @@ export const BLOCS = {
                     "STP","SEN","SLE","SOM","ZAF","SSD","SDN","TZA","TGO","TUN",
                     "UGA","ZMB","ZWE"],
   CELAC: ["ARG","ATG","BHS","BLZ","BOL","BRB","CHL","COL","CRI","CUB",
-        "DMA","DOM","ECU","SLV","GRD","GTM","GUY","HTI","HND","JAM",
-        "MEX","NIC","PAN","PRY","PER","KNA","LCA","VCT","SUR","TTO",
-        "URY","VEN","BRA"],
-  ASEAN: ["BRN","KHM","IDN","LAO","MYS","MMR","PHL","SGP","THA","VNM"], 
+          "DMA","DOM","ECU","SLV","GRD","GTM","GUY","HTI","HND","JAM",
+          "MEX","NIC","PAN","PRY","PER","KNA","LCA","VCT","SUR","TTO",
+          "URY","VEN","BRA"],
+  ASEAN: ["BRN","KHM","IDN","LAO","MYS","MMR","PHL","SGP","THA","VNM"],
 };
 
-// Agreement color scale — shared across map, country, and story
+// ── Bloc colors — Paul Tol's Muted (colorblind-safe) ──────────────────────────
+export const BLOC_COLORS = {
+  "EU":           "#332288",
+  "NATO":         "#88CCEE",
+  "BRICS":        "#44AA99",
+  "PfP":          "#117733",
+  "OIC":          "#999933",
+  "African Group":"#DDCC77",
+  "CELAC":        "#CC6677",
+  "ASEAN":        "#882255",
+  "Other":        "#DDDDDD",
+};
+
+// ── Bloc full names and member counts ─────────────────────────────────────────
+export const BLOC_LABELS = {
+  "EU":           "European Union",
+  "NATO":         "North Atlantic Treaty Organization",
+  "BRICS":        "BRICS",
+  "PfP":          "Partnership for Peace",
+  "OIC":          "Organisation of Islamic Cooperation",
+  "African Group":"African Group at the UN",
+  "CELAC":        "Community of Latin American and Caribbean States",
+  "ASEAN":        "Association of Southeast Asian Nations",
+};
+
+// ── Defunct countries ─────────────────────────────────────────────────────────
+export const DEFUNCT = {
+  "CSK": { name: "Czechoslovakia",             founded: "1918", end: "1993" },
+  "YUG": { name: "Yugoslavia",                  founded: "1918", end: "1992" },
+  "SUN": { name: "USSR",                        founded: "1922", end: "1991" },
+  "DDR": { name: "German Democratic Republic",  founded: "1949", end: "1990" },
+  "GER": { name: "Germany (West)",              founded: "1949", end: "1990" },
+  "SCG": { name: "Serbia and Montenegro",       founded: "2003", end: "2006" },
+  "YMD": { name: "Democratic Yemen",            founded: "1967", end: "1990" },
+  "EAZ": { name: "Zanzibar",                    founded: "1963", end: "1964" },
+  "EAT": { name: "Tanganyika",                  founded: "1961", end: "1964" },
+};
+
+// DNA stripe color scale — Paul Tol's Sunset (colorblind-safe)
+// Low agreement = warm red/orange, High = cool blue
 export const colorScale = d3.scaleSequential()
   .domain([0.4, 1.0])
-  .interpolator(d3.interpolateRgbBasis(["#c0392b","#e67e22","#27ae60","#1a3a6e"]));
+  .interpolator(d3.interpolateRgbBasis([
+    "#A50026","#F67E4B","#FEDA8B","#98CAE1","#4A7BB7","#364B9A"
+  ]));
 
 // ── Database ──────────────────────────────────────────────────────────────────
 
@@ -105,10 +146,12 @@ export function query(sql, params = []) {
 
 // ── Country helpers ───────────────────────────────────────────────────────────
 
-/** Returns the full country name for a given ISO3 code. Falls back to the code itself. */
+/** Returns the full country name for a given ISO3 code, with defunct years if applicable. */
 export function getCountryName(code) {
   const r = query("SELECT country_name FROM countries WHERE ms_code = ?", [code]);
-  return r.length ? r[0].country_name : code;
+  const name = r.length ? r[0].country_name : code;
+  const d = DEFUNCT[code];
+  return d ? `${d.name} (${d.founded}–${d.end})` : name;
 }
 
 /** Returns the ISO2 code for a given ISO3 code, or null if not found. */
@@ -139,26 +182,17 @@ export function ordinal(n) {
 }
 
 /**
- * Returns bloc badge HTML for a country code.
- * Shows small pills for each bloc the country belongs to.
+ * Returns bloc badge HTML for a country code using Paul Tol's Muted palette.
  */
 export function blocBadges(code) {
   const badges = Object.entries(BLOCS)
     .filter(([, codes]) => codes.includes(code))
     .map(([name]) => {
-      const colors = {
-        "EU":           { bg:"#dce6f5", color:"#1a3a6e" },
-        "NATO":         { bg:"#d6eaf8", color:"#2980b9" },
-        "BRICS":        { bg:"#fdebd0", color:"#e67e22" },
-        "PfP":          { bg:"#d5f5e3", color:"#1e8449" },
-        "OIC":          { bg:"#f5eef8", color:"#8e44ad" },
-        "African Group":{ bg:"#fadbd8", color:"#c0392b" },
-        "CELAC": { bg:"#fef9e7", color:"#d4ac0d" },
-        "ASEAN": { bg:"#eafaf1", color:"#1e8449" },
-      };
-      const c = colors[name] ?? { bg:"#f0ede6", color:"#5a5a7a" };
+      const color = BLOC_COLORS[name] ?? "#888";
+      // Lighten the bg by adding opacity
       return `<span style="font-size:8px;letter-spacing:0.06em;text-transform:uppercase;
-        background:${c.bg};color:${c.color};padding:1px 5px;border-radius:3px;
+        background:${color}22;color:${color};border:1px solid ${color}55;
+        padding:1px 5px;border-radius:3px;
         font-family:'Outfit',sans-serif;flex-shrink:0;">${name}</span>`;
     });
   return badges.join(" ");
