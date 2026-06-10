@@ -19,6 +19,9 @@ Download the following files and place them in the correct folders:
 - **Voeten ideal points** → `data/raw/dataverse_files/Idealpointestimates1946-2025.csv`  
   https://doi.org/10.7910/DVN/LEJUQZ
 
+
+**What are ideal points?** - The ideal point was developed by political scientists Michael Bailey, Anton Strezhnev, and Erik Voeten using a statistical method called Bayesian ideal point estimation. With over 198,000 downloads, it is a widely used datasets in international relations research. Its purpose is to show where a country lies on a single dimension of international political alignment, derived from its full UN General Assembly voting record. Higher values indicate closer alignment with Western liberal positions (support for human rights resolutions, democratic norms, and the US-led international order), while lower values reflect alignment with the Global South, sovereignty-first, or non-interventionist positions. For more information visit the link above.
+
 ---
 
 ## Pipeline
