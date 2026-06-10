@@ -156,7 +156,6 @@
       <div class="tt-name" id="tt-name">—</div>
       <div class="tt-row"><span>Agreement</span><span class="tt-val" id="tt-agreement">—</span></div>
       <div class="tt-row"><span>Ideal point</span><span class="tt-val" id="tt-idealpoint">—</span></div>
-      <div class="tt-row"><span>Votes cast</span><span class="tt-val" id="tt-votes">—</span></div>
       <div class="tt-row"><span>ISO code</span><span class="tt-val" id="tt-code">—</span></div>
     </div>
 
@@ -671,7 +670,6 @@ function initMap(world) {
       d3.select("#tt-agreement").text(agr != null ? (agr * 100).toFixed(1) + "%" : "—");
       d3.select("#tt-idealpoint").text(ip != null ? ip.toFixed(3) : "—");
       d3.select("#tt-code").text(iso ?? "—");
-      d3.select("#tt-votes").text("—");
 
       tooltip
         .classed("visible", true)
@@ -683,7 +681,23 @@ function initMap(world) {
       const iso = numToIso.get(+d.id);
       if (!iso) return;
 
+      if (state.selectedCode === iso) {
+        // Deselect
+        state.selectedCode = null;
+        state.pinnedCode   = null;
+        paths.classed("selected", false);
+        document.getElementById("country-story-tab").style.display = "none";
+        document.getElementById("country-detail-tab").style.display = "none";
+        updateInfoCard();
+        // Switch back to consensus
+        state.metric = "consensus";
+        document.getElementById("metric-select").value = "consensus";
+        updateColors(paths, numToIso);
+        updateHatch(hatchPaths, numToIso);
+        return;
+      }
       state.selectedCode = iso;
+      state.pinnedCode = iso;
 
       document.getElementById("country-story-tab").style.display = "block";
       document.getElementById("country-detail-tab").style.display = "block";

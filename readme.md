@@ -3,7 +3,7 @@
 
 Interactive visualization of UN General Assembly voting patterns, 1946–2025.
 
-Group 68: Tanja Matura (01307001), Pekmezci Ece, Guryca Simon
+Group 68: Tanja Matura (01307001), Pekmezci Ece (12552155), Guryca Simon (12112607)
 
 ---
 
@@ -33,11 +33,14 @@ Loads the raw data and prints basic statistics — no output files.
 ```
 python pipeline/pipeline.py
 ```
-Cleans the data, classifies subjects, joins with ideal points, computes pairwise agreement scores, and exports `data/processed/votes.db`, `data/processed/votes_clean.csv` and `un_with_idealpoints.csv`. 
+Cleans the data, classifies subjects, joins with ideal points, computes pairwise agreement scores, and exports `data/processed/votes.db` and `data/processed/un_clean.csv`.
 
 Runtime is approximately 3–5 minutes.
 
 ---
+
+**Alternatively you can download the generated files from here:"
+https://tuwienacat-my.sharepoint.com/:f:/r/personal/e12552155_student_tuwien_ac_at/Documents/data?csf=1&web=1&e=Fz0m4S
 
 ## Running the Visualization
 
@@ -62,33 +65,42 @@ project/
 │   ├── pipeline.py       — full pipeline
 │   └── subject_map.py    — subject category mappings
 ├── viz/
-│   ├── map.html          — main visualization
-│   └── map.css           — styles
+│   ├── map.html          — world map visualization
+│   ├── map.css           — map styles
+│   ├── country.html      — country detail page
+│   ├── country.css       — country detail styles
+│   ├── story.html        — data story page
+│   ├── story.css         — story styles
+│   ├── compare.html      — country comparison page
+│   ├── compare.css       — comparison styles
+│   └── utils.js          — shared utilities (DB, helpers, constants)
+├── img/                  — images for the README
 ├── data/
-│   ├── raw/              — raw source files 
-│   └── processed/        — generated files 
+│   ├── raw/              — raw source files
+│   └── processed/        — generated files (votes.db, un_clean.csv)
 ├── .gitignore
 └── README.md
-```
 ---
 
 ## Pages
 
-- The project offers differet views to explore the data. The map view (/viz/map.html), which is the main page: 
+The project offers differet views to explore the data. 
+
+1. The **map view** (/viz/map.html), which is the main page: 
 
 ![Worldmap](Screenshot.png)
 
 The map view initial shows the average agreement of a country with adopted UN resolutions. The user can hover countries to get more information. When clicking on a country the map updates to show how much other countries agree with the selected country. On the left the user has the option to additionally filter years. The color scheme can also be switched to a more color-blind friendly one by clicking on the eye next to "Agreement scale"
 
-- A detail page for every country (viz/story.html?code=UKR), accesible via the navigation after selection a country: 
+2. A **detail page** for every country (viz/story.html?code=UKR), accesible via the navigation after selection a country: 
 
-![Detail](for_readme2.png)
+![Detail](img/for_readme2.png)
 
 The country detail page shows more in-depth data about the selected country, like their closest and most distand voting partners and can also be filtered by year. For transparency it also includes all resolutions at the bottom.
 
-- A story page (viz/story.html?code=UKR), which presents findings in a more engaging way: 
+3. A **story page** (viz/story.html?code=UKR), which presents findings in a more engaging way: 
 
-![Story](for_readme1.png)
+![Story](img/for_readme1.png)
 
 On the story page, accessible both over the world map and the country detail page, the user can scroll through a prepared presentation of the data, gaining insights that might be difficult to tell from the world map or raw details alone. Many elements are interactive, such as:
   - The dotplot in 02 which allows to enable and disable blocs by clicking in the navigation. It also has a second color-scheme to chose from.
@@ -97,9 +109,9 @@ On the story page, accessible both over the world map and the country detail pag
   - Clicking a countries name will open the country`s story next to the current one, should the user quickly want to repair them
   - text is dynamic depending on the data
 
-- And a comparison view of two countries: 
+5. And a **comparison view** of two countries: 
 
-![Detail](for_readme3.png)
+![Detail](img/for_readme3.png)
 
 Here the user can directly compare two counries, should they be interested in their relationship.
 
