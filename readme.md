@@ -74,22 +74,34 @@ project/
 
 ## Pages
 
-The project offers differet views to explore the data. The map view (/viz/map.html), which is the main page: 
+- The project offers differet views to explore the data. The map view (/viz/map.html), which is the main page: 
 
 ![Worldmap](Screenshot.png)
 
-A detail page for every country (viz/story.html?code=UKR), accesible via the navigation after selection a country: 
+The map view initial shows the average agreement of a country with adopted UN resolutions. The user can hover countries to get more information. When clicking on a country the map updates to show how much other countries agree with the selected country. On the left the user has the option to additionally filter years. The color scheme can also be switched to a more color-blind friendly one by clicking on the eye next to "Agreement scale"
+
+- A detail page for every country (viz/story.html?code=UKR), accesible via the navigation after selection a country: 
 
 ![Detail](for_readme2.png)
 
-A story page (viz/story.html?code=UKR), which presents findings in a more engaging way: 
+The country detail page shows more in-depth data about the selected country, like their closest and most distand voting partners and can also be filtered by year. For transparency it also includes all resolutions at the bottom.
+
+- A story page (viz/story.html?code=UKR), which presents findings in a more engaging way: 
 
 ![Story](for_readme1.png)
 
-And a comparison view of two countries: 
+On the story page, accessible both over the world map and the country detail page, the user can scroll through a prepared presentation of the data, gaining insights that might be difficult to tell from the world map or raw details alone. Many elements are interactive, such as:
+  - The dotplot in 02 which allows to enable and disable blocs by clicking in the navigation. It also has a second color-scheme to chose from.
+  - In 02 hovering the cards reveals the top 5 countries
+  - 03, 04 and 08 can dynamically display more data
+  - Clicking a countries name will open the country`s story next to the current one, should the user quickly want to repair them
+  - text is dynamic depending on the data
+
+- And a comparison view of two countries: 
 
 ![Detail](for_readme3.png)
 
+Here the user can directly compare two counries, should they be interested in their relationship.
 
 ---
 

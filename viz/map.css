@@ -12,11 +12,13 @@
     --accent:         #6bb6ff;
     --accent-dim:     #244f82;
 
-    /* Agreement color scale — red → amber → teal → blue */
-    --col-low:        #c0392b;
-    --col-mid:        #e67e22;
-    --col-high:       #27ae60;
-    --col-max:        #2980b9;
+    /* Agreement color scale — Paul Tol's Sunset (colorblind-safe) */
+    --col-low:        #A50026;
+    --col-mid-low:    #F67E4B;
+    --col-mid:        #FEDA8B;
+    --col-mid-high:   #98CAE1;
+    --col-high:       #4A7BB7;
+    --col-max:        #364B9A;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -115,9 +117,13 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 20px 16px;
-    gap: 20px;
+    gap: 14px;
+    scrollbar-width: none;
   }
+
+  .sidebar::-webkit-scrollbar { display: none; }
 
   .control-group label {
     display: block;
@@ -243,6 +249,7 @@
     border-radius: 6px;
     padding: 14px;
     min-height: 80px;
+    flex-shrink: 0;       
     transition: border-color 0.2s;
   }
 
@@ -279,6 +286,7 @@
   .stats-row {
     display: flex;
     gap: 8px;
+    margin-bottom: -4px;   /* ← pull card up slightly */
   }
 
   .stat-pill {
@@ -509,5 +517,3 @@
   background: #27ae60;
   color: white;
 }
-
-

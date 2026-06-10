@@ -103,8 +103,15 @@
     <div class="divider"></div>
 
     <div>
-      <div class="legend-label">Agreement scale</div>
-      <div class="legend-bar"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div class="legend-label" style="margin-bottom:0;">Agreement scale</div>
+        <button id="cb-palette-toggle" title="Toggle colorblind-safe palette"
+          style="background:none;border:1px solid var(--border);border-radius:4px;
+          color:var(--text-muted);font-size:9px;letter-spacing:0.06em;
+          padding:2px 7px;cursor:pointer;font-family:'JetBrains Mono',monospace;
+          transition:all 0.15s;">👁 CB</button>
+      </div>
+      <div class="legend-bar" id="legend-bar"></div>
       <div class="legend-ticks">
         <span>Low</span>
         <span>0.6</span>
@@ -643,17 +650,20 @@ function initMap(world) {
         updateInfoCard(iso, info, agr, ip);
       }
       svg.on("click", function(event) {
-
       if (event.target.tagName !== "path") {
-
         state.pinnedCode = null;
-
         updateInfoCard();
-
         paths.classed("selected", false);
-
         document.getElementById("country-story-tab").style.display = "none";
         document.getElementById("country-detail-tab").style.display = "none";
+
+        // Auto-switch back to consensus if we were in similarity mode
+        if (state.metric === "similarity") {
+          state.metric = "consensus";
+          document.getElementById("metric-select").value = "consensus";
+          updateColors(paths, numToIso);
+          updateHatch(hatchPaths, numToIso);
+        }
       }
     });
 
@@ -682,9 +692,12 @@ function initMap(world) {
 
       const info = state.data.countries.get(iso);
 
-      if (state.metric === "similarity") {
-        loadSimilarity(state.year, iso);
+      // Auto-switch to similarity mode
+      if (state.metric !== "similarity") {
+        state.metric = "similarity";
+        document.getElementById("metric-select").value = "similarity";
       }
+      loadSimilarity(state.year, iso);
 
       let agr = null;
       if (state.metric === "consensus") {
@@ -710,6 +723,34 @@ function initMap(world) {
   d3.select("#zoom-in").on("click",    () => svg.transition().call(zoom.scaleBy, 1.5));
   d3.select("#zoom-out").on("click",   () => svg.transition().call(zoom.scaleBy, 0.67));
   d3.select("#zoom-reset").on("click", () => svg.transition().call(zoom.transform, d3.zoomIdentity));
+
+  // ── CB palette toggle ──────────────────────────────────────────────────────
+  const PALETTE_SUNSET  = ["#A50026","#F67E4B","#FEDA8B","#98CAE1","#4A7BB7","#364B9A"];
+  const PALETTE_CLASSIC = ["#c0392b","#e67e22","#27ae60","#2980b9"];
+  let cbPaletteActive = false; // starts with classic
+
+    const cbBtn = document.getElementById("cb-palette-toggle");
+  cbBtn.style.background = "#244f82";
+  cbBtn.style.color      = "#6bb6ff";
+  cbBtn.style.borderColor = "#244f82";
+
+  cbBtn.addEventListener("click", () => {
+    cbPaletteActive = !cbPaletteActive;
+    const palette = cbPaletteActive ? PALETTE_SUNSET : PALETTE_CLASSIC;
+    colorAgreement.interpolator(d3.interpolateRgbBasis(palette));
+
+    // Update legend bar
+    const stops = palette.join(", ");
+    document.getElementById("legend-bar").style.background =
+      `linear-gradient(to right, ${stops})`;
+
+    // Update button state
+    cbBtn.style.background  = cbPaletteActive ? "#244f82" : "none";
+    cbBtn.style.color       = cbPaletteActive ? "#6bb6ff" : "var(--text-muted)";
+    cbBtn.style.borderColor = cbPaletteActive ? "#244f82" : "var(--border)";
+
+    updateColors(paths, numToIso);
+  });
 
   d3.select("#year-slider").on("input", function() {
     state.year = +this.value;
