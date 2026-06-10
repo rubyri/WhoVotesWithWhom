@@ -532,6 +532,12 @@ if not CLEAN_ONLY:
 
 conn.commit()
 
+# ── Export un_clean.csv for frontend voting record ────────────────────────────
+# story.html and country.html load this directly for the raw votes table
+print("  Writing un_clean.csv...")
+un_joined.to_csv("data/processed/un_clean.csv", index=False)
+print(f"  Rows: {len(un_joined):,}")
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 print("Table row counts")
