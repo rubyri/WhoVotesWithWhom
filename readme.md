@@ -70,6 +70,26 @@ project/
 ├── .gitignore
 └── README.md
 ```
+---
+
+## Pages
+
+The project offers differet views to explore the data. The map view (/viz/map.html), which is the main page: 
+
+![Worldmap](Screenshot.png)
+
+A detail page for every country (viz/story.html?code=UKR), accesible via the navigation after selection a country: 
+
+![Detail](for_readme2.png)
+
+A story page (viz/story.html?code=UKR), which presents findings in a more engaging way: 
+
+![Story](for_readme1.png)
+
+And a comparison view of two countries: 
+
+![Detail](for_readme3.png)
+
 
 ---
 
