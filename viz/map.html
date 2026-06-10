@@ -523,12 +523,16 @@ function updateInfoCard(iso, info, agr, ip) {
       <span>UN member since</span>
       <span class="info-val">${info.first_year ?? "—"}</span>
     </div>
+
+    <a class="story-btn" href="story.html?code=${iso}">
+      Show Story
+    </a>
   `);
 }
 
 function openCountry() {
   if (state.selectedCode) {
-    window.location.href = `country.html?code=${state.selectedCode}`;
+    window.location.href = `story.html?code=${state.selectedCode}`;
   }
 }
 
@@ -582,7 +586,6 @@ function initMap(world) {
 
   const numToIso = buildNumericToIsoMap();
 
-  // ── Country color layer ───────────────────────────────────────────────────
   paths = g.selectAll(".country-path")
     .data(countries)
     .join("path")
@@ -590,7 +593,6 @@ function initMap(world) {
     .attr("d", path)
     .attr("data-id", d => d.id);
 
-  // ── Hatch overlay layer - drawn on top, pointer-events disabled ───────────
   hatchPaths = g.selectAll(".country-hatch")
     .data(countries)
     .join("path")
@@ -602,8 +604,6 @@ function initMap(world) {
   updateColors(paths, numToIso);
   updateHatch(hatchPaths, numToIso);
 
-  // ── Tooltip ───────────────────────────────────────────────────────────────
-
   const tooltip = d3.select("#tooltip");
 
   paths
@@ -611,21 +611,22 @@ function initMap(world) {
       const iso  = numToIso.get(+d.id);
       const info = iso ? state.data.countries.get(iso) : null;
 
-      /* Looks up the agreement value to display */
       let agr = null;
-      if (state.metric === "consensus") { // similarity to majority consensus
+      if (state.metric === "consensus") {
         agr = state.topic !== "all"
           ? state.data.categories.get(state.topic)?.get(state.year)?.get(iso) ?? null
           : state.data.agreement.get(state.year)?.get(iso) ?? null;
-      } else if (state.metric === "similarity" && state.selectedCode) { // similarity to selected country 
-        agr = state.data.similarity.get(`${state.year}__${state.topic}__${state.selectedCode}`)?.get(iso) ?? null;
+      } else if (state.metric === "similarity" && state.selectedCode) {
+        agr = state.data.similarity
+          .get(`${state.year}__${state.topic}__${state.selectedCode}`)
+          ?.get(iso) ?? null;
       }
 
       const ip = iso ? state.data.idealpoints.get(state.year)?.get(iso) ?? null : null;
 
       d3.select("#tt-name").text(info?.country_name ?? iso ?? "Unknown");
       d3.select("#tt-agreement").text(agr != null ? (agr * 100).toFixed(1) + "%" : "—");
-      d3.select("#tt-idealpoint").text(ip  != null ? ip.toFixed(3) : "—");
+      d3.select("#tt-idealpoint").text(ip != null ? ip.toFixed(3) : "—");
       d3.select("#tt-code").text(iso ?? "—");
       d3.select("#tt-votes").text("—");
 
@@ -633,24 +634,41 @@ function initMap(world) {
         .classed("visible", true)
         .style("left", (event.offsetX + 16) + "px")
         .style("top",  (event.offsetY - 10) + "px");
-
-      updateInfoCard(iso, info, agr, ip);
     })
-    .on("mouseleave", () => tooltip.classed("visible", false))  // hide tooltip on mouse leave
+    .on("mouseleave", () => tooltip.classed("visible", false))
     .on("click", function(event, d) {
       const iso = numToIso.get(+d.id);
-      if (!iso) return; // leave early if no country (eg Antarctica)
+      if (!iso) return;
+
       state.selectedCode = iso;
       updateCountryTab(iso);
-      paths.classed("selected", dd => numToIso.get(+dd.id) === iso);  // highlight selected country (load .selected class in CSS)
-      if (state.metric === "similarity") {  // if in similarity mode, clicking a country sets it as the new reference for coloring
+
+      const info = state.data.countries.get(iso);
+
+      if (state.metric === "similarity") {
         loadSimilarity(state.year, iso);
+      }
+
+      let agr = null;
+      if (state.metric === "consensus") {
+        agr = state.topic !== "all"
+          ? state.data.categories.get(state.topic)?.get(state.year)?.get(iso) ?? null
+          : state.data.agreement.get(state.year)?.get(iso) ?? null;
+      } else if (state.metric === "similarity") {
+        agr = 1.0;
+      }
+
+      const ip = state.data.idealpoints.get(state.year)?.get(iso) ?? null;
+
+      updateInfoCard(iso, info, agr, ip);
+
+      paths.classed("selected", dd => numToIso.get(+dd.id) === iso);
+
+      if (state.metric === "similarity") {
         updateColors(paths, numToIso);
         updateHatch(hatchPaths, numToIso);
       }
     });
-
-  // ── Controls ──────────────────────────────────────────────────────────────
 
   d3.select("#zoom-in").on("click",    () => svg.transition().call(zoom.scaleBy, 1.5));
   d3.select("#zoom-out").on("click",   () => svg.transition().call(zoom.scaleBy, 0.67));
@@ -776,8 +794,8 @@ function buildNumericToIsoMap() {
     document.getElementById("loading-text").textContent = "Error loading data";
     document.getElementById("loading-progress").textContent = err.message;
   }
-  
-    updateUIForMetric();
+
+  updateUIForMetric();
 })();
 </script>
 </body>
