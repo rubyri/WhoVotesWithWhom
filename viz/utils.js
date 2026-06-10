@@ -22,7 +22,23 @@ export const BLOCS = {
         "UKR","GEO","ARM","AZE","MDA",
         "KAZ","KGZ","TJK","TKM","UZB",
         "BIH","SRB"],
-  "Non-Aligned": ["IND","EGY","IDN","GHA","MLI","SEN","TZA","ZMB","CUB","AGO"],
+  OIC: ["AFG","ALB","DZA","AZE","BHR","BGD","BEN","BRN","BFA","CMR","TCD",
+        "COM","CIV","DJI","EGY","GAB","GMB","GIN","GNB","GUY","IDN","IRN",
+        "IRQ","JOR","KAZ","KWT","KGZ","LBN","LBY","MYS","MDV","MLI","MRT",
+        "MAR","MOZ","NER","NGA","OMN","PAK","PSE","QAT","SAU","SEN","SLE",
+        "SOM","SDN","SUR","SYR","TJK","TGO","TUN","TUR","TKM","UGA","ARE",
+        "UZB","YEM"],
+  "African Group": ["DZA","AGO","BEN","BWA","BFA","BDI","CPV","CMR","CAF","TCD",
+                    "COM","COD","COG","CIV","DJI","EGY","GNQ","ERI","SWZ","ETH",
+                    "GAB","GMB","GHA","GIN","GNB","KEN","LSO","LBR","LBY","MDG",
+                    "MWI","MLI","MRT","MUS","MAR","MOZ","NAM","NER","NGA","RWA",
+                    "STP","SEN","SLE","SOM","ZAF","SSD","SDN","TZA","TGO","TUN",
+                    "UGA","ZMB","ZWE"],
+  CELAC: ["ARG","ATG","BHS","BLZ","BOL","BRB","CHL","COL","CRI","CUB",
+        "DMA","DOM","ECU","SLV","GRD","GTM","GUY","HTI","HND","JAM",
+        "MEX","NIC","PAN","PRY","PER","KNA","LCA","VCT","SUR","TTO",
+        "URY","VEN","BRA"],
+  ASEAN: ["BRN","KHM","IDN","LAO","MYS","MMR","PHL","SGP","THA","VNM"], 
 };
 
 // Agreement color scale — shared across map, country, and story
@@ -135,7 +151,10 @@ export function blocBadges(code) {
         "NATO":         { bg:"#d6eaf8", color:"#2980b9" },
         "BRICS":        { bg:"#fdebd0", color:"#e67e22" },
         "PfP":          { bg:"#d5f5e3", color:"#1e8449" },
-        "Non-Aligned":  { bg:"#e8f8f5", color:"#27ae60" },
+        "OIC":          { bg:"#f5eef8", color:"#8e44ad" },
+        "African Group":{ bg:"#fadbd8", color:"#c0392b" },
+        "CELAC": { bg:"#fef9e7", color:"#d4ac0d" },
+        "ASEAN": { bg:"#eafaf1", color:"#1e8449" },
       };
       const c = colors[name] ?? { bg:"#f0ede6", color:"#5a5a7a" };
       return `<span style="font-size:8px;letter-spacing:0.06em;text-transform:uppercase;
