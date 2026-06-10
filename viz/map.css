@@ -275,36 +275,6 @@
     font-style: italic;
   }
   
-  .story-btn {
-    display: block;
-    margin-top: 14px;
-    padding: 10px 12px;
-
-    text-align: center;
-    text-decoration: none;
-
-    background: var(--accent-dim);
-    border: 1px solid var(--border-bright);
-    border-radius: 4px;
-
-    color: var(--accent);
-
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  .story-btn:hover {
-    background: var(--accent);
-    color: var(--bg-deep);
-    border-color: var(--accent);
-  }
-
   /* Stat pills */
   .stats-row {
     display: flex;
@@ -493,5 +463,51 @@
     100% { width: 0%; margin-left: 100%; }
   }
 
+  .nav-tab-context {
+  background: linear-gradient(
+    135deg,
+    #2d7fff,
+    #5b4dff
+  );
+
+  color: white;
+  border-color: transparent;
+
+  font-weight: 600;
+
+  animation: navAppear 0.25s ease;
+}
+
+.nav-tab-context:hover {
+  filter: brightness(1.08);
+}
+
+.nav-tab-context {
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.08),
+    0 0 18px rgba(91,77,255,.35);
+}
+
+@keyframes navAppear {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+#country-detail-tab {
+  background: #1f7ae0;
+  color: white;
+}
+
+#country-story-tab {
+  background: #27ae60;
+  color: white;
+}
 
 

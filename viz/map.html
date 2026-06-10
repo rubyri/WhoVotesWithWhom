@@ -31,11 +31,33 @@
   </div>
   <div class="header-right">
     <nav class="nav-tabs">
-      <button class="nav-tab" id="country-nav-tab" style="display:none" onclick="openCountry()">—</button>
-      <button class="nav-tab active">World Map</button>
-      <button class="nav-tab">Network</button>
-      <button class="nav-tab">Timeline</button>
-      <button class="nav-tab" onclick="window.location.href='compare.html'">Compare</button>
+
+      <button
+        id="country-story-tab"
+        class="nav-tab nav-tab-context"
+        style="display:none"
+        onclick="openStory()">
+        Country Story
+      </button>
+
+      <button
+        id="country-detail-tab"
+        class="nav-tab nav-tab-context"
+        style="display:none"
+        onclick="openCountry()">
+        Country Detail
+      </button>
+
+      <button class="nav-tab active">
+        World Map
+      </button>
+
+      <button
+        class="nav-tab"
+        onclick="window.location.href='compare.html'">
+        Compare Countries
+      </button>
+
     </nav>
   </div>
 </header>
@@ -131,23 +153,6 @@
       <div class="tt-row"><span>ISO code</span><span class="tt-val" id="tt-code">—</span></div>
     </div>
 
-    <div id="topic-notice" style="
-      display:none;
-      position:absolute;
-      top:16px;
-      left:50%;
-      transform:translateX(-50%);
-      background:#0d1626;
-      border:1px solid #2a4570;
-      border-radius:4px;
-      padding:6px 14px;
-      font-size:18px;
-      letter-spacing:0.08em;
-      text-transform:uppercase;
-      color:#4a9eff;
-      pointer-events:none;
-    "></div>
-
     <div class="map-controls">
       <button class="map-btn" id="zoom-in"  title="Zoom in">+</button>
       <button class="map-btn" id="zoom-out" title="Zoom out">−</button>
@@ -181,6 +186,7 @@ const state = {
   metric:       "consensus",
   topic:        "all",
   selectedCode: null,
+  pinnedCode:   null,
   data: {
     agreement:   new Map(), // Map<year, Map<iso3, consensus>>
     categories:  new Map(), // Map<category, Map<year, Map<iso3, consensus>>>
@@ -523,26 +529,36 @@ function updateInfoCard(iso, info, agr, ip) {
       <span>UN member since</span>
       <span class="info-val">${info.first_year ?? "—"}</span>
     </div>
-
-    <a class="story-btn" href="story.html?code=${iso}">
-      Show Story
-    </a>
   `);
 }
 
 function openCountry() {
   if (state.selectedCode) {
-    window.location.href = `story.html?code=${state.selectedCode}`;
+    window.location.href =
+      `country.html?code=${state.selectedCode}`;
   }
 }
 
-function updateCountryTab(iso) {
-  const tab  = document.getElementById("country-nav-tab");
-  const info = state.data.countries.get(iso);
-  if (info) {
-    tab.textContent    = info.country_name;
-    tab.style.display  = "block";
+function openStory() {
+  if (state.selectedCode) {
+    window.location.href =
+      `story.html?code=${state.selectedCode}`;
   }
+}
+
+function updateCountryTabs(iso) {
+  const info = state.data.countries.get(iso);
+
+  const detailTab = document.getElementById("country-detail-tab");
+  const storyTab  = document.getElementById("country-story-tab");
+
+  if (!info) return;
+
+  detailTab.textContent = `${info.country_name} Data`;
+  storyTab.textContent  = `${info.country_name}'s Story`;
+
+  detailTab.style.display = "block";
+  storyTab.style.display  = "block";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -623,6 +639,23 @@ function initMap(world) {
       }
 
       const ip = iso ? state.data.idealpoints.get(state.year)?.get(iso) ?? null : null;
+      if (!state.pinnedCode) {
+        updateInfoCard(iso, info, agr, ip);
+      }
+      svg.on("click", function(event) {
+
+      if (event.target.tagName !== "path") {
+
+        state.pinnedCode = null;
+
+        updateInfoCard();
+
+        paths.classed("selected", false);
+
+        document.getElementById("country-story-tab").style.display = "none";
+        document.getElementById("country-detail-tab").style.display = "none";
+      }
+    });
 
       d3.select("#tt-name").text(info?.country_name ?? iso ?? "Unknown");
       d3.select("#tt-agreement").text(agr != null ? (agr * 100).toFixed(1) + "%" : "—");
@@ -641,7 +674,11 @@ function initMap(world) {
       if (!iso) return;
 
       state.selectedCode = iso;
-      updateCountryTab(iso);
+
+      document.getElementById("country-story-tab").style.display = "block";
+      document.getElementById("country-detail-tab").style.display = "block";
+
+      updateCountryTabs(iso);
 
       const info = state.data.countries.get(iso);
 

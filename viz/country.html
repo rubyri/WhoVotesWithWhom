@@ -25,11 +25,9 @@
   </div>
   <div class="header-right">
     <nav class="nav-tabs">
+      <button class="nav-tab active" id="country-tab">Country...</button>
       <button class="nav-tab" onclick="window.location.href='map.html'">World Map</button>
-      <button class="nav-tab">Network</button>
-      <button class="nav-tab">Timeline</button>
       <button class="nav-tab" onclick="window.location.href='compare.html?a='+(new URLSearchParams(location.search).get('code')||'')">Compare</button>
-      <button class="nav-tab active" id="country-tab">—</button>
     </nav>
   </div>
 </header>
@@ -70,6 +68,20 @@
   <div class="dna-section">
     <div class="dna-label">Agreement with majority · all years</div>
     <svg id="dna-svg" height="55"></svg>
+  </div>
+
+  <!-- Story card -->
+  <div class="section-card story-card" id="story-card">
+    <div class="story-card-left">
+      <div class="story-label">Country Story</div>
+      <div class="story-text">
+        Explore the major shifts, alliances, and voting patterns that shaped this country's UN voting history.
+      </div>
+    </div>
+
+    <button class="story-btn-large" id="story-btn">
+      Read Story →
+    </button>
   </div>
 
   <!-- Year control -->
@@ -445,6 +457,10 @@ function onYearChange(year) {
     document.getElementById("table-search").addEventListener("input", function() {
       searchTerm = this.value.toLowerCase();
       renderVotesTable();
+    });
+
+    document.getElementById("story-btn").addEventListener("click", () => {
+      window.location.href = `story.html?code=${MS_CODE}`;
     });
 
     window.addEventListener("resize", () => renderDNA(MS_CODE));

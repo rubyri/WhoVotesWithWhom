@@ -3,6 +3,8 @@
 
 Interactive visualization of UN General Assembly voting patterns, 1946–2025.
 
+Group 68: Tanja Matura (01307001), Pekmezci Ece, Guryca Simon
+
 ---
 
 ## Setup
@@ -27,19 +29,13 @@ python pipeline/loadFiles.py
 ```
 Loads the raw data and prints basic statistics — no output files.
 
-### Run the full pipeline
+### Run the full pipeline (mandatory for the webview to work)
 ```
 python pipeline/pipeline.py
 ```
-Cleans the data, classifies subjects, joins with ideal points, computes pairwise agreement scores, and exports `data/processed/votes.db`.
+Cleans the data, classifies subjects, joins with ideal points, computes pairwise agreement scores, and exports `data/processed/votes.db`, `data/processed/votes_clean.csv` and `un_with_idealpoints.csv`. 
 
-Takes approximately 3–5 minutes.
-
-### Clean only (skip agreement computation)
-```
-python pipeline/pipeline.py --clean-only
-```
-Useful when tweaking subject categories — skips the slow pairwise computation. Takes ~1 minute.
+Runtime is approximately 3–5 minutes.
 
 ---
 
@@ -69,8 +65,8 @@ project/
 │   ├── map.html          — main visualization
 │   └── map.css           — styles
 ├── data/
-│   ├── raw/              — raw source files (not committed)
-│   └── processed/        — generated files (not committed)
+│   ├── raw/              — raw source files 
+│   └── processed/        — generated files 
 ├── .gitignore
 └── README.md
 ```
@@ -81,4 +77,3 @@ project/
 
 - UN Dag Hammarskjöld Library — *General Assembly Voting Data*, version 5, February 2026. [digitallibrary.un.org](https://digitallibrary.un.org/record/4060887)
 - Voeten, Strezhnev, Bailey — *UN General Assembly Ideal Point Estimates*, Harvard Dataverse. [doi:10.7910/DVN/LEJUQZ](https://doi.org/10.7910/DVN/LEJUQZ)
-- Robinson, Goguen-Compagnoni — *unvotes: United Nations General Assembly Voting Data*, R package v0.3.0, 2021. [CRAN](https://CRAN.R-project.org/package=unvotes)

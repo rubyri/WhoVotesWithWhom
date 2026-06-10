@@ -278,3 +278,54 @@
     height: 100vh;
     gap: 16px;
   }
+
+
+  
+  .nav-tab-context {
+  background: linear-gradient(
+    135deg,
+    #2d7fff,
+    #5b4dff
+  );
+
+  color: white;
+  border-color: transparent;
+
+  font-weight: 600;
+
+  animation: navAppear 0.25s ease;
+}
+
+.nav-tab-context:hover {
+  filter: brightness(1.08);
+}
+
+.nav-tab-context {
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.08),
+    0 0 18px rgba(91,77,255,.35);
+}
+
+@keyframes navAppear {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+#country-detail-tab {
+  background: #1f7ae0;
+  color: white;
+}
+
+#country-story-tab {
+  background: #27ae60;
+  color: white;
+}
+
+
